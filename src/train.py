@@ -52,7 +52,7 @@ if __name__ == "__main__":
         H = 2
         # This also includes dx, dy, dtheta
         P = 6
-    elif target.startswith("rzr_sim"):
+    elif target.startswith("rzr_"):
         is_ackermann = True
         D = 3 # throttle, brake, steer (multiplied by -1 if we're in reverse)
         H = 2
