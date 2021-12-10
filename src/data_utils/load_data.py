@@ -1,6 +1,7 @@
 import numpy as np
 import h5py as h5
 from pathlib import Path
+from .bag_processing import bag_extract_data
 from .hdf5_processing import hdf5_extract_data
 
 def load_dataset(dataset_name: str):
@@ -29,6 +30,11 @@ def load_dataset(dataset_name: str):
     for file_path in list(data_folder.rglob("*.h5")) + list(data_folder.rglob("*.hdf5")):
         with h5.File(file_path) as f:
             result.extend(hdf5_extract_data(dataset_name, f))
+
+    # Bag Processing
+    for file_path in data_folder.rglob("*.bag"):
+        result.extend(bag_extract_data(dataset_name, file_path))
+
 
     if not result:
         raise ValueError(

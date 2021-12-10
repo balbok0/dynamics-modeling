@@ -4,6 +4,7 @@ channels:
   - pytorch
   - defaults
 dependencies:
+  - python=3.8
   - matplotlib
   - numpy
   - scikit-learn
@@ -11,3 +12,4 @@ dependencies:
   - pytorch
   - torchvision
   - tqdm
+  - ros-rosbag
