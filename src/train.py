@@ -57,11 +57,6 @@ if __name__ == "__main__":
         D = 3 # throttle, brake, steer (multiplied by -1 if we're in reverse)
         H = 2
         P = 6
-    elif target == "rzr_sim_h5":
-        is_ackermann = True
-        D = 3 # throttle, brake, steer (multiplied by -1 if we're in reverse)
-        H = 6
-        P = 13
     else:
         print("Unknown target dataset")
         sys.exit(0)
