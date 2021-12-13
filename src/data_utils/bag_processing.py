@@ -54,7 +54,10 @@ def bag_extract_data(dataset_name: str, bag_file_path: Union[str, Path]):
 
     # Odom (P - ground truth)
     # TODO: Verify what is ground truth in this case. Jakub: Possible candidates seem to be /pose, /odom, /vehicle/odom
-    gt_topic = f"/{robot_name}/odom"  # TODO: Could also be f"/{robot_name}/vehicle/odom"
+    gt_topic = f"/unity_command/ground_truth/{robot_name}"  # Sim
+    if gt_topic not in topics:
+        # TODO: Could also be f"/{robot_name}/vehicle/odom"
+        gt_topic = f"/{robot_name}/odom"
 
     topics_to_extract = [input_topic, state_topic, gt_topic]
     for topic in topics_to_extract:
