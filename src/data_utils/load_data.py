@@ -2,10 +2,11 @@ from typing import Dict, List
 import numpy as np
 import h5py as h5
 from pathlib import Path
-from .bag_processing import bag_extract_data
+from .bag_processing.bag_processing import load_bag
 from .hdf5_processing import hdf5_extract_data
 
 SequenceData = Dict[str, np.ndarray]  # TODO: For really big datasets, this should also have a possible type of Callable[[], SequenceData]
+# TODO: Also long reach, but we should be requiring "time" to be a key. This way
 
 def load_dataset(dataset_name: str, features: List[str], robot_type: str) -> List[SequenceData]:
     data_folder: Path = Path("datasets") / dataset_name
@@ -24,12 +25,7 @@ def load_dataset(dataset_name: str, features: List[str], robot_type: str) -> Lis
                 result.extend(hdf5_extract_data(dataset_name, f))
 
     # Bag Processing
-    # TODO: Add parsing for skid. Bags should also be able to just subscribe to cmd_vel
-    if robot_type == "ackermann":
-        for file_path in data_folder.rglob("*.bag"):
-            seqs, time_seqs = bag_extract_data(dataset_name, file_path)
-            result.extend(seqs)
-            time_result.extend(time_seqs)
+    result.extend(load_bag(data_folder, dataset_name, features, robot_type))
 
     if not result:
         raise ValueError(
@@ -67,7 +63,6 @@ def load_numpy(data_folder: Path, dataset_name: str, features: List[str], robot_
             # This also includes dx, dy, dtheta
             P = 6
         elif dataset_name == "rzr_sim":
-            is_ackermann = True
             D = 3 # throttle, brake, steer (multiplied by -1 if we're in reverse)
             H = 2
             P = 6
