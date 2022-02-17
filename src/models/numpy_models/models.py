@@ -3,7 +3,9 @@ import numpy as np
 
 class LinearModel(AbstractNumpyModel):
     name = "linear"
-    features = ["state", "control", "target"]
+    x_features = ["state", "control"]
+    y_features = ["target"]
+    dataset_name = "numpy"
 
     def train(self, seqs, n_steps=1):
         self.train_n_steps = n_steps
@@ -13,20 +15,20 @@ class LinearModel(AbstractNumpyModel):
         weighted_y = train_y * WEIGHTS
         assert(weighted_y.shape == train_y.shape)
         assert(len(train_x) == len(train_y))
-        weighted_w = np.linalg.solve(
+        self.w = np.linalg.solve(
             train_x.T @ train_x + self.lambda_ * np.eye(train_x.shape[1]),
             train_x.T @ weighted_y,
         )
-        print(f"Train x: {train_x.shape}")
-        print(f"Train y: {train_y.shape}")
 
 
 class MeanModel(AbstractNumpyModel):
     name = "mean"
-    features = ["state", "control", "target"]
+    x_features = ["state", "control"]
+    y_features = ["target"]
+    dataset_name = "numpy"
 
-    def __init__(self, D, H, P):
-        super().__init__(D, H, P, 0)
+    def __init__(self, D, H, *args, **kwargs):
+        super().__init__(D, H, 0)
         self.mean = None
         self.train_n_steps = 1
 
@@ -40,11 +42,13 @@ class MeanModel(AbstractNumpyModel):
 
 class UnicycleModel(AbstractNumpyModel):
     name = "unicycle"
-    features = ["state", "control", "target"]
+    x_features = ["state", "control"]
+    y_features = ["target"]
+    dataset_name = "numpy"
 
-    def __init__(self, D, H, P, delay_steps):
+    def __init__(self, D, H, delay_steps):
         # Unicycle model doesn't account for velocity state (features 2 and 3)
-        super().__init__(D, H, P, delay_steps)
+        super().__init__(D, H, delay_steps)
         self.train_n_steps = 1
 
     def train(self, seqs, n_steps=1):
@@ -59,14 +63,20 @@ class UnicycleModel(AbstractNumpyModel):
 
 class GTTwistModel(AbstractNumpyModel):
     name = "gt_twist"
-    features = ["state", "control", "target"]
+    x_features = ["state", "control"]
+    y_features = ["target"]
+    dataset_name = "numpy"
 
-    def __init__(self, D, H, P):
-        super().__init__(D, H, P, 0)
-        self.features_to_use = np.zeros(D+H+P, dtype=np.bool)
+    def __init__(self, D, H, *args, **kwargs):
+        super().__init__(D, H, 0)
+        self.features_to_use = np.zeros(D+H, dtype=np.bool)
         self.features_to_use[-3:] = True
         self.train_n_steps = 1
 
         # Before training, set a default
         dt = 0.1
         self.w = dt * np.eye(3)
+
+    def train(self, *args, **kwargs):
+        # It's Ground Truth
+        pass

@@ -7,5 +7,13 @@ class ModelWithSpec(ABC):
         pass
 
     @abstractproperty
-    def features(self) -> List[str]:
+    def dataset_name(self) -> str:
+        pass
+
+    @abstractproperty
+    def x_features(self) -> List[str]:
+        pass
+
+    @abstractproperty
+    def y_features(self) -> List[str]:
         pass

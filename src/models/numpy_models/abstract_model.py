@@ -12,14 +12,14 @@ WEIGHTS = np.array([10,10,100])
 # I think we don't want an affine model, since for zero input
 # we should actually get zero output.
 class AbstractNumpyModel(ModelWithSpec, ABC):
-    def __init__(self, D, H, P, delay_steps, lambda_: float = 0.0):
+    def __init__(self, D, H, delay_steps, lambda_: float = 0.0):
         self.w = None
         self.train_n_steps = None
         self.delay_steps = delay_steps
-        self.features_to_use = np.zeros(D+H+P, dtype=np.bool)
-        self.features_to_predict = np.zeros(D+H+P, dtype=np.bool)
+        self.features_to_use = np.zeros(D+H, dtype=np.bool)
+        self.features_to_predict = np.zeros(D+H, dtype=np.bool)
         self.features_to_use[:D] = True
-        self.features_to_predict[D+H:D+H+3] = True
+        self.features_to_predict[D:] = True
         self.lambda_ = lambda_
 
     def relative_pose(self, query_pose, reference_pose):
