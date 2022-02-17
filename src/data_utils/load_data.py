@@ -1,21 +1,25 @@
-from typing import Dict, List
+from functools import lru_cache
+from typing import Dict, List, Type
 import numpy as np
 import h5py as h5
 from pathlib import Path
+from inspect import isclass, ismodule
+
+from data_utils.datasets.named_dataset import NamedDataset
+
 from .bag_processing.bag_processing import load_bag
 from .hdf5_processing import hdf5_extract_data
 
 SequenceData = Dict[str, np.ndarray]  # TODO: For really big datasets, this should also have a possible type of Callable[[], SequenceData]
 # TODO: Also long reach, but we should be requiring "time" to be a key. This way
 
-def load_dataset(dataset_name: str, features: List[str], robot_type: str) -> List[SequenceData]:
+def load_dataset(dataset_name: str, x_features: List[str], y_features: List[str], robot_type: str, dataset_type: str) -> List[SequenceData]:
     data_folder: Path = Path("datasets") / dataset_name
 
     result = []
-    time_result = []
 
     # Numpy processing
-    result.extend(load_numpy(data_folder, dataset_name, features, robot_type))
+    result.extend(load_numpy(data_folder, dataset_name, x_features + y_features, robot_type))
 
     # HDF5 Processing
     # TODO: Detect if hdf5 file is ackermann or skid. Add parsing for skid
@@ -25,18 +29,14 @@ def load_dataset(dataset_name: str, features: List[str], robot_type: str) -> Lis
                 result.extend(hdf5_extract_data(dataset_name, f))
 
     # Bag Processing
-    result.extend(load_bag(data_folder, dataset_name, features, robot_type))
+    result.extend(load_bag(data_folder, dataset_name, x_features + y_features, robot_type))
 
     if not result:
         raise ValueError(
             f"Dataset: {dataset_name} not found. Ensure that is a folder under \'datasets/\' directory"
         )
 
-    # TODO: This should be based on a parameter. rn just a simple check
-    if len(result) == len(time_result):
-        return result, time_result
-    else:
-        return result, None
+    return convert_data_to_dataset(result, dataset_type, x_features, y_features)
 
 
 def load_numpy(data_folder: Path, dataset_name: str, features: List[str], robot_type: str):
@@ -94,3 +94,44 @@ def load_numpy(data_folder: Path, dataset_name: str, features: List[str], robot_
                 else:
                     seq = np.concatenate([seq, data], 0)
     return seqs
+
+
+def get_all_datasets(module = None, explored_modules = None) -> Dict[str, Type[NamedDataset]]:
+    def filter_for_models_with_spec(k, v):
+        return (
+            not k.startswith("__")  # __main__ etc.
+            and isclass(v)
+            and not k == "NamedDataset"
+            and issubclass(v, NamedDataset)
+        )
+
+    if module is None:
+        from . import datasets
+        module = datasets
+    if explored_modules is None:
+        explored_modules = set()
+
+    explored_modules.add(module)
+
+    result = dict()
+    for k, v in vars(module).copy().items():
+        if ismodule(v) and v not in explored_modules:
+            recurse = get_all_datasets(v, explored_modules)
+            result |= recurse
+        elif filter_for_models_with_spec(k, v):
+            result[v.name] = v
+    return result
+
+def convert_data_to_dataset(data: List[SequenceData], dataset_type: str, x_features: List[str], y_features: List[str]):
+    datasets_types = get_all_datasets()
+
+    if dataset_type not in datasets_types:
+        raise ValueError(
+            f"Model named {dataset_type} not found.\n"
+            f"Available models are {', '.join(datasets_types.keys())}"
+        )
+    return datasets_types[dataset_type](
+        seqs=data,
+        x_features=x_features,
+        y_features=y_features,
+    )
