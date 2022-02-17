@@ -16,6 +16,11 @@ def parse_args():
     parser.add_argument(
         "-m", "--model", type=str, help="Name of model to use. To see which models are available see --list-models.", required='--list-models' not in sys.argv
     )
+    # TODO: Organize it nicer?
+    parser.add_argument(
+        "--delay-steps", type=int, default=1, help="Number of steps controls are delayed by.",
+    )
+
 
     result = vars(parser.parse_args()).copy()
 
