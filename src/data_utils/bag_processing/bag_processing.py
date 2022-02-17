@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 import rosbag
 from pathlib import Path
 import numpy as np
@@ -16,6 +16,21 @@ def verify_sequence(sequence: Dict[str, List], features: List[str]):
     len_seq = len(sequence["time"])
     return all([len(sequence[k]) == len_seq for k in features])
 
+
+def log_and_verify_sequence(sequence: Optional[Dict[str, List]], features: List[str]) -> Optional[Dict[str, np.ndarray]]:
+        # Last sequence sequence
+        if sequence is None:
+            return None
+
+        if not verify_sequence(sequence, features):
+            raise ValueError(
+                f"Received invalid sequence. Features: {features}, but keys of sequence are: {sequence.keys()}"
+                "\nIt these match it probably is an issue with shapes of these features."
+            )
+
+        for k in sequence.keys():
+            sequence[k] = np.array(sequence[k])
+        return sequence
 
 def bag_extract_data(dataset_name: str, features: List[str], bag_file_path: Union[str, Path]):
     bag_file_path = Path(bag_file_path)
@@ -44,28 +59,19 @@ def bag_extract_data(dataset_name: str, features: List[str], bag_file_path: Unio
             finished_sequence = callback.callback(msg, ts, current_state)
 
             # End of current sequence
+            finished_sequence = log_and_verify_sequence(finished_sequence, features)
             if finished_sequence is not None:
-                if not verify_sequence(finished_sequence, features):
-                    raise ValueError(
-                        f"Received invalid sequence. Features: {features}, but keys of sequence are: {finished_sequence.keys()}"
-                        "\nIt these match it probably is an issue with shapes of these features."
-                    )
                 result.append(finished_sequence)
 
     for callback_arr in topics_with_callbacks.values():
         for callback in callback_arr:
             finished_sequence = callback.end_bag()
 
-            # End of current sequence
+            # Last sequence sequence
+            finished_sequence = log_and_verify_sequence(finished_sequence, features)
             if finished_sequence is not None:
-                if not verify_sequence(finished_sequence, features):
-                    raise ValueError(
-                        f"Received invalid sequence. Features: {features}, but keys of sequence are: {finished_sequence.keys()}"
-                        "\nIt these match it probably is an issue with shapes of these features."
-                    )
                 result.append(finished_sequence)
 
-    print(f"Result len: {len(result)}")
     return result
 
 
