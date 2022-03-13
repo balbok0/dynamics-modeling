@@ -2,7 +2,7 @@ from .abstract_model import AbstractNumpyModel, WEIGHTS
 import numpy as np
 
 class LinearModel(AbstractNumpyModel):
-    name = "linear"
+    name = "numpy-linear"
     x_features = ["state", "control"]
     y_features = ["target"]
     dataset_name = "numpy"
@@ -22,7 +22,7 @@ class LinearModel(AbstractNumpyModel):
 
 
 class MeanModel(AbstractNumpyModel):
-    name = "mean"
+    name = "numpy-mean"
     x_features = ["state", "control"]
     y_features = ["target"]
     dataset_name = "numpy"
@@ -41,7 +41,7 @@ class MeanModel(AbstractNumpyModel):
         return np.tile(self.mean, (xx.shape[0], 1))
 
 class UnicycleModel(AbstractNumpyModel):
-    name = "unicycle"
+    name = "numpy-unicycle"
     x_features = ["state", "control"]
     y_features = ["target"]
     dataset_name = "numpy"
@@ -62,7 +62,7 @@ class UnicycleModel(AbstractNumpyModel):
             ])
 
 class GTTwistModel(AbstractNumpyModel):
-    name = "gt_twist"
+    name = "numpy-gt_twist"
     x_features = ["state", "control"]
     y_features = ["target"]
     dataset_name = "numpy"

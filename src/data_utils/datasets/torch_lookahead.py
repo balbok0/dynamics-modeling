@@ -53,28 +53,30 @@ class LookaheadSequenceDataset(Dataset, NamedDataset):
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         # Pre-allocate arrays, get indexes of corresponding features
         seqs_len = 0
+        x_feature_size = 0
+        y_feature_size = 0
         for s in seqs:
-            seqs_len += len(s) - n_steps - delay_steps
+            seqs_len += len(s[x_features[0]]) - n_steps - delay_steps
 
-        x_seqs = np.zeros((seqs_len, x_features.sum()), dtype=np.float32)
-        y_seqs = np.zeros((seqs_len, y_features.sum()), dtype=np.float32)
+        x_seqs = None
+        y_seqs = None
         t_seqs = np.zeros((seqs_len,), dtype=np.float32)
 
         # Process data
         seqs_so_far = 0
         for s in seqs:
             # Get data for sequence
-            s_len = len(s) - n_steps - delay_steps
+            s_len = len(s[x_features[0]]) - n_steps - delay_steps
+            for a in [
+                s[f][:s_len] for f in x_features
+            ]:
+                print(a.shape)
             x_s = np.concatenate([
                 s[f][:s_len] for f in x_features
-            ], axis=0)
+            ], axis=1)
             y_s = np.concatenate([
                 s[f] for f in y_features
-            ], axis=0)
-
-            print(f"s_len: {s_len}")
-            print(f"x shape: {x_s.shape}")
-            print(f"y shape: {y_s.shape}")
+            ], axis=1)
 
             if "time" in s:
                 t_s = s["time"][n_steps + delay_steps:] - s["time"][:s_len]
@@ -82,8 +84,13 @@ class LookaheadSequenceDataset(Dataset, NamedDataset):
                 t_s = np.ones(s_len)
 
             # Get target y
-            relative_targets = __class__._relative_pose(y_s[n_steps:], y_s[:-n_steps])
+            relative_targets = __class__._relative_pose(y_s[n_steps:], y_s[:n_steps])
             y_s = relative_targets[delay_steps:]
+
+            # If it's a first sequence define x_seqs and y_seqs with proper shapes
+            if x_seqs is None:
+                x_seqs = np.zeros((seqs_len, x_s.shape[1]), dtype=np.float32)
+                y_seqs = np.zeros((seqs_len, y_s.shape[1]), dtype=np.float32)
 
             # Append to result
             x_seqs[seqs_so_far:seqs_so_far + s_len] = x_s
