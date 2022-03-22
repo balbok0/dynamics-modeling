@@ -6,6 +6,12 @@ bags/
 
 # Temp files
 tmp*
+tmp/
+temp*
+temp/
 
 # IDE
 .vscode/
+
+# TensorBoard
+runs/

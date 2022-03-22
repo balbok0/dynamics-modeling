@@ -34,8 +34,8 @@ class AbstractTopicCallback(ABC):
         current_state: Dict,
         *args,
         **kwargs,
-    ) -> Optional[Dict[str, List]]:
+    ) -> bool:
         pass
 
-    def end_bag(self) -> Optional[Dict[str, List]]:
+    def end_bag(self) -> bool:
         return None

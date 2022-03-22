@@ -25,3 +25,5 @@ class GroundTruthCallback(AbstractTopicCallback):
         ]).as_euler("zyx")[0]
 
         current_state[self.__class__.feature] = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y, z_angle])
+
+        return True
