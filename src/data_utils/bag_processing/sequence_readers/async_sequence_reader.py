@@ -103,7 +103,8 @@ class ASyncSequenceReader():
         ):
             log_at_ts = False
             for callback in topics_with_callbacks[topic]:
-                log_at_ts |= callback.callback(msg, ts, current_state)
+                # Ignore timestamp return, since we are logging at the time of receiving the message
+                log_at_ts |= callback.callback(msg, ts, current_state)[0]
 
             if log_at_ts:
                 self.record_state(current_state, ts)

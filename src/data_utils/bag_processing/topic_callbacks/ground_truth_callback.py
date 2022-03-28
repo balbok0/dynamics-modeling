@@ -3,7 +3,6 @@ import numpy as np
 import rospy
 from .abstract_callback import AbstractTopicCallback
 from nav_msgs.msg import Odometry
-from ...general_utils import planar_pose, planar_twist
 import scipy.spatial.transform as trf
 
 
@@ -26,4 +25,4 @@ class GroundTruthCallback(AbstractTopicCallback):
 
         current_state[self.__class__.feature] = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y, z_angle])
 
-        return True
+        return True, ts

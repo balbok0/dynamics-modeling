@@ -11,4 +11,4 @@ class OdomCallback(AbstractTopicCallback):
         # Dictionaries are modified in place in python
         current_state[self.__class__.feature] = np.array([msg.twist.twist.linear.x, msg.twist.twist.angular.z])
 
-        return False
+        return False, ts

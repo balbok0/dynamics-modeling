@@ -1,7 +1,7 @@
 import rospy
 
 from abc import abstractmethod, ABC, abstractproperty
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 class AbstractTopicCallback(ABC):
@@ -34,7 +34,7 @@ class AbstractTopicCallback(ABC):
         current_state: Dict,
         *args,
         **kwargs,
-    ) -> bool:
+    ) -> Tuple[bool, rospy.Time]:
         pass
 
     def end_bag(self) -> bool:

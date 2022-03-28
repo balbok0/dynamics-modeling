@@ -1,1 +1,1 @@
-from .linear import Linear
+from .linear import Linear, AutorallyLinear

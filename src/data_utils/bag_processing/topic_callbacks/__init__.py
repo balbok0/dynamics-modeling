@@ -13,7 +13,9 @@ from .abstract_callback import AbstractTopicCallback
 from . import (
     ground_truth_callback,
     input_callback,
-    odom_callback
+    odom_callback,
+    autorally_ground_truth,
+    autorally_state
 )
 
 def get_topics_and_callbacks(
@@ -25,7 +27,13 @@ def get_topics_and_callbacks(
     features_to_find = set(features)
 
     # NOTE: Ordering matters here a lot!
-    for callback_module in [ground_truth_callback, input_callback, odom_callback]:
+    for callback_module in [
+        ground_truth_callback,
+        input_callback,
+        odom_callback,
+        autorally_ground_truth,
+        autorally_state,
+    ]:
         for obj in dir(callback_module):
             # Faster filter for built-in tools and the abstract class
             if obj.startswith("__") or obj == "AbstractTopicCallback":

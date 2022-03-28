@@ -37,5 +37,5 @@ class InputCallback(AbstractTopicCallback):
             ]
         )
 
-        return False
+        return False, ts
 

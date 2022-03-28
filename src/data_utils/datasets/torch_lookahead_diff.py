@@ -6,8 +6,8 @@ from .named_dataset import NamedDataset
 from torch.utils.data import Dataset
 from torch import nn
 
-class LookaheadSequenceDataset(Dataset, NamedDataset):
-    name = "torch_lookahead"
+class LookaheadDiffSequenceDataset(Dataset, NamedDataset):
+    name = "torch_lookahead_diff"
 
     def __init__(
         self,
@@ -110,7 +110,7 @@ class LookaheadSequenceDataset(Dataset, NamedDataset):
                 s[f][:s_len] for f in x_features
             ], axis=1)
             y_s = np.concatenate([
-                s[f][-s_len:] for f in y_features
+                s[f] for f in y_features
             ], axis=1)
 
             if "time" in s:
@@ -118,6 +118,10 @@ class LookaheadSequenceDataset(Dataset, NamedDataset):
                 t_s = t_s[:, None]
             else:
                 t_s = np.ones((s_len, 1))
+
+            # Get target y
+            relative_targets = __class__._relative_pose(y_s[n_steps:], y_s[:-n_steps])
+            y_s = relative_targets[delay_steps:]
 
             if remove_duplicates:
                 # Check for differences being almost 0

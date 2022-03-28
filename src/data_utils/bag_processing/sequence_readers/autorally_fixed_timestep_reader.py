@@ -11,12 +11,12 @@ from tqdm import tqdm
 from scipy import interpolate
 
 
-class FixedTimestepReader():
+class AutorallyFixedTimestepReader():
     def __init__(
         self,
         required_keys: List[str],
         max_in_seq_delay: Union[rospy.Duration, float] = 0.1,  # At least 10 Hz for messages,
-        log_interval: Union[rospy.Duration, float] = 1 / 30,  # Around 30 Hz
+        log_interval: float = 1. / 30,  # 30 Hz
         *args,
         **kwargs,
     ) -> None:
@@ -36,15 +36,33 @@ class FixedTimestepReader():
         # Threshold at which to break the sequence
         self.THRESHOLD_NEW_SEQUENCE = max_in_seq_delay if isinstance(max_in_seq_delay, rospy.Duration) else rospy.Duration(secs=max_in_seq_delay)
 
+        self.log_interval = log_interval
+
     @staticmethod
-    def interpolate_data(y, t, spline_pwr: int = 3):
-        knots = np.linspace(t[0], t[-1], t.size/10.0)[1:-1]
-        spline_params = interpolate.splrep(t, y, k = spline_pwr, t=knots)
+    def get_spline_rep(y, t, spline_pwr: int = 3):
+        knots = np.linspace(t[0], t[-1], int(round(t.size/10.0)))[1:-1]
+
+
+        spline_params = []
+
+        for col in y.T:
+            spline_params.append(interpolate.splrep(t, col, k = spline_pwr, t=knots))
         return spline_params
 
+    @staticmethod
+    def apply_spline_rep(spline_params, t, *args, **kwargs):
+        # Pre-allocate array
+        result = np.zeros((len(t), len(spline_params)))
+
+        for idx, spline_param in enumerate(spline_params):
+            result[:, idx] = interpolate.splev(t, spline_param, *args, **kwargs)
+
+        return result
 
     def __finish_sequence(self):
-        if len(self.cur_sequence_ts) <= 1:
+        sample_key = next(iter(self.cur_sequence_ts.keys()))
+
+        if len(self.cur_sequence_ts[sample_key]) <= 1:
             # TODO: Better error
             raise ValueError("Sequence not long enough")
 
@@ -53,29 +71,30 @@ class FixedTimestepReader():
         # Get the last timestamp
         max_ts = max([x[-1] for x in self.cur_sequence_ts.values()])
 
-        cur_sequence_interpolated = {
-            k: interpolate(
+        cur_sequence_interp_func = {
+            k: self.__class__.get_spline_rep(
                 np.array(self.cur_sequence_states[k]),
-                np.array(self.cur_sequence_ts[k]) - min_ts
+                np.array([(x - min_ts).to_sec() for x in self.cur_sequence_ts[k]]),
             )
             for k in self.cur_sequence_ts.keys()
         }
 
-        # Lookup table of last processed ts index for each feature
-        last_idx_ts = {k: 0 for k in self.cur_sequence_ts.keys()}
+        # Interpolate all sequences
+        cur_sequence = {}
+        ts = np.linspace(0.0, (max_ts - min_ts).to_sec(), int(round((max_ts - min_ts).to_sec() / self.log_interval)))
+        for k, spline_transform in cur_sequence_interp_func.items():
+            if k == "autorally-gt":
+                cur_sequence[k] = self.__class__.apply_spline_rep(spline_transform, ts, der=1)
+            else:
+                cur_sequence[k] = self.__class__.apply_spline_rep(spline_transform, ts)
 
-        ts = min_ts
-        cur_sequence = defaultdict(list)
-        while ts <= max_ts:
-            for feature in self.cur_sequence_ts.keys():
-                idx = last_idx_ts[feature]
-                while (
-                    idx < len(self.cur_sequence_ts[feature]) and
-                    idx
-                ):
-                    last_idx_ts[feature] = idx
-            pass
-        pass
+        # Also add time
+        cur_sequence["time"] = ts
+
+        self.sequences.append(cur_sequence)
+
+        self.cur_sequence_states = defaultdict(list)
+        self.cur_sequence_ts = defaultdict(list)
 
     def end_bag(self):
         self.__finish_sequence()
@@ -108,10 +127,11 @@ class FixedTimestepReader():
                 self.__finish_sequence()
 
             for callback in topics_with_callbacks[topic]:
-                callback.callback(msg, ts, current_state)
+                # Ignore boolean since we are logging splines at the end of the sequence
+                _, ts_log = callback.callback(msg, ts, current_state)
 
                 # Log timestamp and current state
-                self.cur_sequence_ts[callback.feature].append(ts)
+                self.cur_sequence_ts[callback.feature].append(ts_log)
                 self.cur_sequence_states[callback.feature].append(current_state[callback.feature])
 
             self.last_ts = ts
