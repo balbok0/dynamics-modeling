@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import Enum
 
 # region: VehicleInput
@@ -45,4 +45,35 @@ class VehicleInput:
         fields = ["steer", "brake", "throttle", "automatic_gear"]
         return all([getattr(self, x) == getattr(__o, x) for x in fields])
 
+
 # end region: VehicleInput
+
+
+# region: PIDInfo
+
+
+class PolarisControlMode(Enum):
+    MANUAL = 0
+    AUTONOMOUS = 2
+    MANUAL_TAKEOVER = 3
+
+
+@dataclass
+class PIDInfo:
+    vel_des: float
+    vel: float
+    error: float
+    integral_error: float
+    control: float
+    polaris_control_mode: int
+    polaris_control_health: int
+    brake_responding: bool
+
+    def __eq__(self, __o: object) -> bool:
+        if not isinstance(__o, PIDInfo):
+            return False
+        fields = ["vel_des", "vel", "error", "integral_error", "control", "polaris_control_mode", "polaris_control_health", "brake_responding"]
+        return all([getattr(self, x) == getattr(__o, x) for x in fields])
+
+
+# end region: PIDInfo

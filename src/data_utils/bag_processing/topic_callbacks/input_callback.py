@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import rospy
-from .msg_stubs import VehicleInput, AutomaticGearDirectionDict
+from ..msg_stubs import VehicleInput, AutomaticGearDirectionDict
 from .abstract_callback import AbstractTopicCallback
 
 class InputCallback(AbstractTopicCallback):
