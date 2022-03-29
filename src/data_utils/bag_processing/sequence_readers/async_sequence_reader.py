@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import numpy as np
 from tqdm import tqdm
-from ..topic_callbacks import get_topics_and_callbacks
+from ..transforms import get_topics_and_transforms
 
 import rospy
 import rosbag
@@ -87,7 +87,7 @@ class ASyncSequenceReader():
         topic_parents, topic_parents_counts =  np.unique([x.split("/", 2)[1] for x in topics.keys()], return_counts=True)
         robot_name = topic_parents[np.argmax(topic_parents_counts)]
 
-        topics_with_callbacks = get_topics_and_callbacks(
+        topics_with_transforms = get_topics_and_transforms(
             self.required_keys, set(topics.keys()), {"robot_name": robot_name}
         )
 
@@ -97,19 +97,19 @@ class ASyncSequenceReader():
         # Current state is modified in-place
         current_state = {}
         for topic, msg, ts in tqdm(
-            bag.read_messages(topics=topics_with_callbacks.keys()),
-            total=sum([topics[k].message_count for k in topics_with_callbacks.keys()]),
+            bag.read_messages(topics=topics_with_transforms.keys()),
+            total=sum([topics[k].message_count for k in topics_with_transforms.keys()]),
             desc=f"Extracting from bag: {bag_file_path.name}"
         ):
             log_at_ts = False
-            for callback in topics_with_callbacks[topic]:
+            for callback in topics_with_transforms[topic]:
                 # Ignore timestamp return, since we are logging at the time of receiving the message
                 log_at_ts |= callback.callback(msg, ts, current_state)[0]
 
             if log_at_ts:
                 self.record_state(current_state, ts)
 
-        for callback_arr in topics_with_callbacks.values():
+        for callback_arr in topics_with_transforms.values():
             for callback in callback_arr:
                 callback.end_bag()
 

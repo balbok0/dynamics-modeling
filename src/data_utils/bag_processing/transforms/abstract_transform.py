@@ -1,10 +1,11 @@
+import numpy as np
 import rospy
 
 from abc import abstractmethod, ABC, abstractproperty
 from typing import Dict, List, Optional, Tuple
 
 
-class AbstractTopicCallback(ABC):
+class AbstractTransform(ABC):
 
     @abstractproperty
     def topics(self) -> List[str]:
@@ -34,8 +35,13 @@ class AbstractTopicCallback(ABC):
         current_state: Dict,
         *args,
         **kwargs,
-    ) -> Tuple[bool, rospy.Time]:
+    ):
         pass
 
-    def end_bag(self) -> bool:
+    @abstractmethod
+    def end_sequence(self) -> Tuple[np.ndarray, np.ndarray]:
+        pass
+
+    @abstractmethod
+    def end_bag(self):
         return None

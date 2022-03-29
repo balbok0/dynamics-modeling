@@ -1,9 +1,9 @@
 import numpy as np
 import rospy
-from .abstract_callback import AbstractTopicCallback
+from .abstract_transform import AbstractTransform
 from nav_msgs.msg import Odometry
 
-class OdomCallback(AbstractTopicCallback):
+class OdomTransform(AbstractTransform):
     topics = ["/{robot_name}/odom"]
     feature = "state"
 

@@ -7,15 +7,14 @@ from .abstract_filter import AbstractFilter
 
 
 class PIDInfoFilter(AbstractFilter):
+    name = "pid_info"
+    topics = [{'/{robot_name}/pid_info'}]
+
     def __init__(self) -> None:
         super().__init__()
 
         # Initialize per-bag variables
         self.end_bag()
-
-    @property
-    def topics(self) -> List[Set[str]]:
-        return [{'/{robot_name}/pid_info'}]
 
     @property
     def should_log(self) -> bool:

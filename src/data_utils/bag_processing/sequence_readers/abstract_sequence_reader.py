@@ -1,9 +1,14 @@
 from abc import ABC, abstractmethod, abstractproperty
 from collections import defaultdict
 from pathlib import Path
+
+import numpy as np
+from tqdm import tqdm
+from ..filters import AbstractFilter, get_filters_topics
 import rospy
 import rosbag
 from typing import Any, Dict, List, Optional, Tuple, Union
+from ..transforms import get_topics_and_transforms
 
 
 # Each out feature points to a list of values. They have to have the same length.
@@ -25,10 +30,11 @@ class AbstractSequenceReader(ABC):
     def __init__(
         self,
         required_keys: List[str],
+        filters: List[AbstractFilter] = [],
         *args,
         **kwargs,
     ) -> None:
-        """AbstractSequenceReader is a class that combines filters and topic callbacks in order to read a bag file.
+        """AbstractSequenceReader is a class that combines filters and topic transforms in order to read a bag file.
         While it itself does not provide a specific output (see it's subclasses), it provides methods that can be used in such process.
 
         Args:
@@ -39,6 +45,8 @@ class AbstractSequenceReader(ABC):
 
         self.required_keys = required_keys
         self.required_keys_set = set(required_keys)
+
+        self.filters = filters
 
     @abstractproperty
     def sequences(self) -> Sequences:
@@ -58,6 +66,63 @@ class AbstractSequenceReader(ABC):
             bag_file_path (Union[str, Path]): Path to the bag file.
         """
         pass
+
+    def _extract_raw_sequences(self, bag_file_path: Union[str, Path]):
+        bag_file_path = Path(bag_file_path)
+        bag = rosbag.Bag(bag_file_path)
+        topics = bag.get_type_and_topic_info().topics
+
+        # Get robot name. It should be the most often occuring topmost key
+        topic_parents, topic_parents_counts =  np.unique([x.split("/", 2)[1] for x in topics.keys()], return_counts=True)
+        robot_name = topic_parents[np.argmax(topic_parents_counts)]
+
+        topics_with_transforms = get_topics_and_transforms(
+            self.required_keys, set(topics.keys()), {"robot_name": robot_name}
+        )
+
+        if self.filters == []:
+            filtered_ts = [(rospy.Time(bag.get_start_time()), rospy.Time(bag.get_end_time()))]
+        else:
+            filter_topics = get_filters_topics(self.filters, set(topics.keys()), {"robot_name": robot_name})
+
+            last_log_state = False
+            cur_start_time = None
+
+
+            for topic, msg, ts in bag.read_messages(topics=filter_topics.keys()):
+                # Callback for current topic
+                for filter_ in filter_topics[topic]:
+                    filter_.callback(msg)
+
+                # Whether all filters agree that current time should be logged
+                cur_log_state = all([f.log_state for f in self.filters])
+
+                # If state changed either log start time of this chunk or end current chunk
+                if cur_log_state and not last_log_state:
+                    cur_start_time = ts
+                elif not cur_log_state and last_log_state:
+                    filtered_ts.append((cur_start_time, ts))
+
+                # Update last_log_state
+                last_log_state = cur_log_state
+
+        # Call transforms/handlers to process data for each sequence.
+        for ts_start, ts_end in filtered_ts:
+            for topic, msg, ts in tqdm(
+                bag.read_messages(topics=topics_with_transforms.keys(), start_time=ts_start, end_time=ts_end),
+                desc=f"Extracting from bag: {bag_file_path.name}",
+                total=sum([topics[k].message_count for k in topics_with_transforms.keys()]),
+            ):
+                # Callback for current topic
+                for callback in topics_with_transforms[topic]:
+                    callback(msg)
+
+            # Add current sequence to list of sequences
+            self.cur_bag_raw_sequences.append(self.cur_raw_sequence)
+
+            # Reset current sequence
+            self.cur_raw_sequence = defaultdict(([], []))
+
 
     def verify_sequence(self, sequence: Sequence) -> bool:
         """

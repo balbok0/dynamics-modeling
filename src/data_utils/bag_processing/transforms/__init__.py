@@ -1,7 +1,7 @@
 """
-Module containing callbacks for bag topics and converting them into corresponding numpy arrays.
+Module containing transforms for bag topics and converting them into corresponding numpy arrays.
 
-Sorting matters here, since some callbacks might overlap in features/topics.
+Sorting matters here, since some transforms might overlap in features/topics.
 
 isort:skip_file
 """
@@ -9,38 +9,38 @@ from collections import defaultdict
 from inspect import isclass
 from typing import Dict, List, Set
 
-from .abstract_callback import AbstractTopicCallback
+from .abstract_transform import AbstractTransform
 from . import (
-    ground_truth_callback,
-    input_callback,
-    odom_callback,
+    ground_truth_transform,
+    input_transform,
     autorally_ground_truth,
-    autorally_state
+    autorally_state,
+    odom_transform
 )
 
-def get_topics_and_callbacks(
+def get_topics_and_transforms(
     features: List[str],
     bag_topics: Set[str],
     format_map: Dict[str, str]
-) -> Dict[str, List[AbstractTopicCallback]]:
+) -> Dict[str, List[AbstractTransform]]:
     result = defaultdict(list)
     features_to_find = set(features)
 
     # NOTE: Ordering matters here a lot!
     for callback_module in [
-        ground_truth_callback,
-        input_callback,
-        odom_callback,
+        ground_truth_transform,
+        input_transform,
+        odom_transform,
         autorally_ground_truth,
         autorally_state,
     ]:
         for obj in dir(callback_module):
             # Faster filter for built-in tools and the abstract class
-            if obj.startswith("__") or obj == "AbstractTopicCallback":
+            if obj.startswith("__") or obj == "AbstractTransform":
                 continue
 
             obj = getattr(callback_module, obj)
-            if isclass(obj) and issubclass(obj, AbstractTopicCallback):
+            if isclass(obj) and issubclass(obj, AbstractTransform):
                 # Check if it feature matches any of the requested features
                 if obj.feature in features_to_find:
                     for topic in obj.topics:

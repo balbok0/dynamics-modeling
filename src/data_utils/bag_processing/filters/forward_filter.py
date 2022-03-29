@@ -5,6 +5,9 @@ from data_utils.bag_processing.msg_stubs import PIDInfo
 from .abstract_filter import AbstractFilter
 
 class ForwardFilter(AbstractFilter):
+    name = "forward"
+    topics = [{'/{robot_name}/pid_info'}]
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -12,8 +15,6 @@ class ForwardFilter(AbstractFilter):
         self.end_bag()
 
         self.after_last_threshold_log = Duration(1)  # seconds
-
-        self.topics = [{'/{robot_name}/pid_info'}]
 
     @property
     def should_log(self) -> bool:

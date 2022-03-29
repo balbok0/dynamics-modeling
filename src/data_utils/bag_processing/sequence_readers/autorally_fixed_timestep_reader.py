@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, DefaultDict, List, Optional, Union
 
 import numpy as np
-from ..topic_callbacks import get_topics_and_callbacks
+from ..transforms import get_topics_and_transforms
 
 import rospy
 import rosbag
@@ -109,7 +109,7 @@ class AutorallyFixedTimestepReader():
         topic_parents, topic_parents_counts =  np.unique([x.split("/", 2)[1] for x in topics.keys()], return_counts=True)
         robot_name = topic_parents[np.argmax(topic_parents_counts)]
 
-        topics_with_callbacks = get_topics_and_callbacks(
+        topics_with_transforms = get_topics_and_transforms(
             self.required_keys, set(topics.keys()), {"robot_name": robot_name}
         )
 
@@ -119,14 +119,14 @@ class AutorallyFixedTimestepReader():
         # Current state is modified in-place
         current_state = {}
         for topic, msg, ts in tqdm(
-            bag.read_messages(topics=topics_with_callbacks.keys()),
-            total=sum([topics[k].message_count for k in topics_with_callbacks.keys()]),
+            bag.read_messages(topics=topics_with_transforms.keys()),
+            total=sum([topics[k].message_count for k in topics_with_transforms.keys()]),
             desc=f"Extracting from bag: {bag_file_path.name}"
         ):
             if self.last_ts is not None and ts - self.last_ts > self.THRESHOLD_NEW_SEQUENCE:
                 self.__finish_sequence()
 
-            for callback in topics_with_callbacks[topic]:
+            for callback in topics_with_transforms[topic]:
                 # Ignore boolean since we are logging splines at the end of the sequence
                 _, ts_log = callback.callback(msg, ts, current_state)
 
@@ -137,7 +137,7 @@ class AutorallyFixedTimestepReader():
             self.last_ts = ts
 
 
-        for callback_arr in topics_with_callbacks.values():
+        for callback_arr in topics_with_transforms.values():
             for callback in callback_arr:
                 callback.end_bag()
 
