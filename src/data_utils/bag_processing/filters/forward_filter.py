@@ -28,6 +28,11 @@ class ForwardFilter(AbstractFilter):
         if msg.vel > 1e-6:
             self.last_forward_msg = ts
 
+        if not self.cur_state:
+            print("ForwardFilter: Not logging")
+            print(f"msg.vel: {msg.vel}")
+            print(f"ts diff: {(ts - self.last_forward_msg).to_sec()}")
+
     def end_bag(self):
         self.cur_state = False
         self.last_forward_msg = Time()

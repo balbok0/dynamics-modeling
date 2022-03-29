@@ -1,6 +1,8 @@
 from dataclasses import dataclass, fields
 from enum import Enum
 
+import numpy as np
+
 # region: VehicleInput
 
 
@@ -65,8 +67,8 @@ class PIDInfo:
     error: float
     integral_error: float
     control: float
-    polaris_control_mode: int
-    polaris_control_health: int
+    polaris_control_mode: np.int32
+    polaris_control_health: np.int32
     brake_responding: bool
 
     def __eq__(self, __o: object) -> bool:

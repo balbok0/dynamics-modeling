@@ -1,4 +1,4 @@
 from .async_sequence_reader import ASyncSequenceReader
-from .autorally_fixed_timestep_reader import AutorallyFixedTimestepReader
+from .fixed_interval_sequence_reader import FixedIntervalReader
 
-__all__ = [ASyncSequenceReader, AutorallyFixedTimestepReader]
+__all__ = [ASyncSequenceReader, FixedIntervalReader]

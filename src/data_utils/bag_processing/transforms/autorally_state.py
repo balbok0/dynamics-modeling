@@ -67,7 +67,7 @@ class AutorallyState(AbstractTransform):
 
         # Interpolate
         # splrep and splev works for 1D arrays only, so we need to apply it per-column
-        for f_idx in poses.shape[1]:
+        for f_idx in range(poses.shape[1]):
             spline_params = interpolate.splrep(ts, poses[:, f_idx], k = self.spline_pwr, t=knots)
 
             poses[:, f_idx] = interpolate.splev(ts, spline_params)

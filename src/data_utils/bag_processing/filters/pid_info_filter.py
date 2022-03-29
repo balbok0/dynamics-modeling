@@ -23,8 +23,8 @@ class PIDInfoFilter(AbstractFilter):
     def callback(self, msg: PIDInfo, ts: Time, topic: str):
 
         self.cur_state = (
-            msg.polaris_control_mode == PolarisControlMode.AUTONOMOUS
-            and msg.polaris_control_health != 2
+            msg.polaris_control_mode == PolarisControlMode.AUTONOMOUS.value
+            and msg.polaris_control_health == 2
             and msg.brake_responding  # If brake is not responding then data will not be reliable, so it's good to filter this too
         )
 

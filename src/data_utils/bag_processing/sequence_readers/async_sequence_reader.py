@@ -3,116 +3,74 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import numpy as np
 from tqdm import tqdm
+
+from .abstract_sequence_reader import AbstractSequenceReader, Sequence
 from ..transforms import get_topics_and_transforms
+from ..filters import AbstractFilter
 
 import rospy
 import rosbag
 
 
-class ASyncSequenceReader():
-    def __init__(
-        self,
-        required_keys: List[str],
-        max_in_seq_delay: Union[rospy.Duration, float] = 0.1,  # 10 Hz
-        *args,
-        **kwargs,
-    ) -> None:
-        self.sequences = []
-        self.cur_sequence = defaultdict(list)
-        self.last_ts: Optional[rospy.Time] = None
-        self.required_keys = required_keys
-        self.required_keys_set = set(required_keys)
-        self.THRESHOLD_NEW_SEQUENCE = max_in_seq_delay if isinstance(max_in_seq_delay, rospy.Duration) else rospy.Duration(secs=max_in_seq_delay)
+class ASyncSequenceReader(AbstractSequenceReader):
+    def __init__(self, required_keys: List[str], features_to_record_on: List[str], filters: List[AbstractFilter] = ...,  *args, **kwargs) -> None:
+        super().__init__(required_keys, filters, *args, **kwargs)
 
-    def verify_sequence(self):
-        # Verify that:
-        #   1. All of requested features (and "time") are present in a sequence
-        #   2. Lengths of sequence agree for all key-words
-        if not (self.required_keys_set | {"time"}).issubset(self.cur_sequence.keys()):
-            return False
+        assert len(features_to_record_on) > 0, "features_to_record_on must be a non-empty list"
+        assert set(features_to_record_on).issubset(set(required_keys))
 
-        len_seq = len(self.cur_sequence["time"])
-        return all([len(self.cur_sequence[k]) == len_seq for k in self.required_keys_set])
+        self._sequences = []
 
-    def __finish_sequence(self):
-        if len(self.cur_sequence) > 0:
-            if not self.verify_sequence():
-                raise ValueError(
-                    f"Received invalid sequence. Features: {self.required_keys}, but keys of sequence are: {self.cur_sequence.keys()}"
-                    "\nIt these match it probably is an issue with shapes of these features."
-                )
-            for k in self.cur_sequence.keys():
-                self.cur_sequence[k] = np.asarray(self.cur_sequence[k])
-            self.sequences.append(self.cur_sequence)
-        # Initialize cur_sequence to defaultdict
-        self.cur_sequence = defaultdict(list)
+        self.features_to_record_on = []
 
-    def record_state(self, state: Dict[str, Any], ts: rospy.Time):
-        if not self.required_keys_set.issubset(state.keys()):
-            # Not all keys are inserted yet
-            return
+    @property
+    def sequences(self):
+        return self._sequences
 
-        # TODO: Check if the input is the same as one before. If so continue.
-        # Real vehicle spams /input message quite often (avg./median ~30 Hz, range 25-40Hz)
-        # These seem to be quite different at every step. It might be that PID is modifying the steps.
-        # It would be really beneficial to not have such an overlapping data.
-        # However, this can make spacing of commands inconsistent across time, which can cause issues.
+    def _transform_raw_sequences(self):
+        for raw_sequence in self.cur_bag_raw_sequences:
+            # Set is used to ensure timestamps are unique
+            tmp = set()
+            for feature_name in self.features_to_record_on:
+                tmp.update(raw_sequence[feature_name][1])
+            ts_to_record_on = np.sort(tmp)
 
-        # Check if this message is a start of a new sequence
-        if self.last_ts is not None and ts - self.last_ts > self.THRESHOLD_NEW_SEQUENCE:
-            self.__finish_sequence()
-            self.last_input_ts = ts
-            return
+            # Traverse sequentially through timestamps to be logged on
+            # Ensure that all of the required keys are present at the time of logging
+            # and if so log the state at the time
+            last_used_idx = {
+                feature_name: -1
+                for feature_name in self.required_keys
+            }
+            sequence: Sequence = {
+                feature_name: []
+                for feature_name in self.required_keys
+            }
+            for ts in ts_to_record_on:
+                # For each feature get the latest index that is less than or equal to the current timestamp
+                for feature in self.required_keys:
+                    while (
+                        last_used_idx[feature] + 1 != len(raw_sequence[feature][1])
+                        and raw_sequence[feature][1][last_used_idx[feature] + 1] <= ts
+                    ):
+                        last_used_idx[feature] += 1
 
-        self.last_input_ts = ts
+                # If any of the required features still didn't occur, break
+                if any(last_used_idx[feature] == -1 for feature in self.required_keys):
+                    continue
 
-        # All of the keys are found, and it still is the same sequence.
-        # Record the sequence, in order
-        for feature in self.required_keys:
-            self.cur_sequence[feature].append(state[feature])
+                # Add current state to the sequence
+                for feature in self.required_keys:
+                    sequence[feature].append(raw_sequence[feature][0][last_used_idx[feature]])
 
-        # Also record time
-        self.cur_sequence["time"].append(ts.to_sec())
+                # Lastly add time
+                sequence["time"].append(ts)
 
-    def end_bag(self):
-        self.__finish_sequence()
-        self.last_ts = None
+            # Add sequence to the list of sequences, if it's non-empty
+            if len(sequence) > 0:
+                self.sequences.append(sequence)
 
-    def bag_extract_data(self, bag_file_path: Union[str, Path]):
-        bag_file_path = Path(bag_file_path)
-        bag = rosbag.Bag(bag_file_path)
-        topics = bag.get_type_and_topic_info().topics
-
-        # Get robot name. It should be the most often occuring topmost key
-        topic_parents, topic_parents_counts =  np.unique([x.split("/", 2)[1] for x in topics.keys()], return_counts=True)
-        robot_name = topic_parents[np.argmax(topic_parents_counts)]
-
-        topics_with_transforms = get_topics_and_transforms(
-            self.required_keys, set(topics.keys()), {"robot_name": robot_name}
-        )
-
-        # Result holds a list of dictionaries. One for each sequence.
-        result = []
-
-        # Current state is modified in-place
-        current_state = {}
-        for topic, msg, ts in tqdm(
-            bag.read_messages(topics=topics_with_transforms.keys()),
-            total=sum([topics[k].message_count for k in topics_with_transforms.keys()]),
-            desc=f"Extracting from bag: {bag_file_path.name}"
-        ):
-            log_at_ts = False
-            for callback in topics_with_transforms[topic]:
-                # Ignore timestamp return, since we are logging at the time of receiving the message
-                log_at_ts |= callback.callback(msg, ts, current_state)[0]
-
-            if log_at_ts:
-                self.record_state(current_state, ts)
-
-        for callback_arr in topics_with_transforms.values():
-            for callback in callback_arr:
-                callback.end_bag()
-
+    def extract_bag_data(self, bag_file_path: Union[str, Path]):
+        self._extract_raw_sequences(bag_file_path)
+        self._transform_raw_sequences()
         self.end_bag()
-
-        return result

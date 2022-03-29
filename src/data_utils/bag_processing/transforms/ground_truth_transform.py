@@ -31,8 +31,6 @@ class GroundTruthTransform(AbstractTransform):
 
         current_state[self.__class__.feature] = np.array(state)
 
-        return True, ts
-
     def end_sequence(self) -> Tuple[np.ndarray, np.ndarray]:
         states = np.array(self.state_history)
         ts = np.array(self.ts_history)
