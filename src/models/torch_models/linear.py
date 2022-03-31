@@ -15,7 +15,7 @@ class Linear(nn.Module, ModelWithSpec):
     # dim_in: 2 (state) + 3 (control)
     in_features = 5
     # dim_out: 3 (state displacement)
-    out_features = 3
+    out_features = 2
 
     def __init__(self) -> None:
         super().__init__()

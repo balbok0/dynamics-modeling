@@ -58,10 +58,13 @@ class FixedIntervalReader(AbstractSequenceReader):
 
                 # For each column get spline params and interpolate back onto the fixed cadence goal timestamps
                 for col_idx in range(feature_data.shape[1]):
-                    spline_params = interpolate.splrep(feature_ts - min_ts, feature_data[:, col_idx], k=self.spline_pwr, t=knots)
+                    spline_params = interpolate.splrep(feature_ts, feature_data[:, col_idx], k=self.spline_pwr, t=knots)
                     processed_feature_sequence[:, col_idx] = interpolate.splev(goal_ts, spline_params)
 
                 cur_sequence[feature_name] = processed_feature_sequence
+
+            # Lastly add timestamp of the sequence
+            cur_sequence["time"] = goal_ts + min_ts
 
             self._sequences.append(cur_sequence)
 

@@ -92,7 +92,6 @@ class AbstractSequenceReader(ABC):
             for topic, msg, ts in tqdm(
                 bag.read_messages(topics=filter_topics.keys()),
                 desc="Filtering bag",
-                total=sum([topics[k].message_count for k in filter_topics.keys()]),
                 leave=False,
             ):
                 # Callback for current topic
@@ -106,9 +105,6 @@ class AbstractSequenceReader(ABC):
                 if cur_log_state and not last_log_state:
                     cur_start_time = ts
                 elif not cur_log_state and last_log_state:
-                    if (ts - cur_start_time).to_sec() < 5.0:
-                        for filter_ in self.filters:
-                            print(f"Filter {filter_.name}: {filter_.should_log}")
                     filtered_ts.append((cur_start_time, ts))
 
                 # Update last_log_state
@@ -125,12 +121,10 @@ class AbstractSequenceReader(ABC):
 
         # Call transforms/handlers to process data for each sequence.
         for ts_start, ts_end in filtered_ts:
-            print(f"duration: {(ts_end - ts_start).to_sec()}")
             current_state = {}
             for topic, msg, ts in tqdm(
                 bag.read_messages(topics=topics_with_transforms.keys(), start_time=ts_start, end_time=ts_end),
                 desc=f"Extracting transforms from bag: {bag_file_path.name}",
-                total=sum([topics[k].message_count for k in topics_with_transforms.keys()]),
                 leave=False,
             ):
                 # Callback for current topic

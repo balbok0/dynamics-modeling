@@ -1,12 +1,14 @@
+from typing import Union
 from genpy import Duration
 from rospy import AnyMsg, Time
+from nav_msgs.msg import Odometry
 
 from data_utils.bag_processing.msg_stubs import PIDInfo
 from .abstract_filter import AbstractFilter
 
 class ForwardFilter(AbstractFilter):
     name = "forward"
-    topics = [{'/{robot_name}/pid_info'}]
+    topics = [{'/{robot_name}/pid_info', '/{robot_name}/odom'}]
 
     def __init__(self) -> None:
         super().__init__()
@@ -20,18 +22,19 @@ class ForwardFilter(AbstractFilter):
     def should_log(self) -> bool:
         return self.cur_state
 
-    def callback(self, msg: PIDInfo, ts: Time, topic: str):
+    def callback(self, msg: Union[Odometry, PIDInfo], ts: Time, topic: str):
+        if topic.endswith("odom"):
+            msg: Odometry
+            vel = msg.twist.twist.linear.x
+        else:
+            msg: PIDInfo
+            vel = msg.vel
         self.cur_state = (
-            msg.vel > 1e-6 or (ts - self.last_forward_msg) < self.after_last_threshold_log
+            vel > 1e-6 or (ts - self.last_forward_msg) < self.after_last_threshold_log
         )
 
-        if msg.vel > 1e-6:
+        if vel > 1e-6:
             self.last_forward_msg = ts
-
-        if not self.cur_state:
-            print("ForwardFilter: Not logging")
-            print(f"msg.vel: {msg.vel}")
-            print(f"ts diff: {(ts - self.last_forward_msg).to_sec()}")
 
     def end_bag(self):
         self.cur_state = False

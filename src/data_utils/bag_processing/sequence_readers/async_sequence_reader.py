@@ -13,7 +13,7 @@ import rosbag
 
 
 class ASyncSequenceReader(AbstractSequenceReader):
-    def __init__(self, required_keys: List[str], features_to_record_on: List[str], filters: List[AbstractFilter] = ...,  *args, **kwargs) -> None:
+    def __init__(self, required_keys: List[str], features_to_record_on: List[str], filters: List[AbstractFilter] = [],  *args, **kwargs) -> None:
         super().__init__(required_keys, filters, *args, **kwargs)
 
         assert len(features_to_record_on) > 0, "features_to_record_on must be a non-empty list"
@@ -28,12 +28,24 @@ class ASyncSequenceReader(AbstractSequenceReader):
         return self._sequences
 
     def _transform_raw_sequences(self):
+        print(f"Raw sequences gotten: {len(self.cur_bag_raw_sequences)}")
         for raw_sequence in self.cur_bag_raw_sequences:
+            print("Here 1")
+
             # Set is used to ensure timestamps are unique
             tmp = set()
+            # Raw sequence keys
+            print(f"Raw sequence: {list(raw_sequence.keys())}")
+            print(f"Features to record on: {self.features_to_record_on}")
             for feature_name in self.features_to_record_on:
                 tmp.update(raw_sequence[feature_name][1])
+            print(f"tmp len: {len(tmp)}")
+            if not tmp:
+                # If the sequence is empty, ignore it
+                continue
             ts_to_record_on = np.sort(tmp)
+
+            print("Here 2")
 
             # Traverse sequentially through timestamps to be logged on
             # Ensure that all of the required keys are present at the time of logging
