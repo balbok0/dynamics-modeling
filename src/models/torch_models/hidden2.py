@@ -4,8 +4,8 @@ from torch import nn
 from ..abstract_model import ModelWithSpec
 
 
-class Linear(nn.Module, ModelWithSpec):
-    name = "linear"
+class Hidden2ReLU(nn.Module, ModelWithSpec):
+    name = "hidden-2-relu"
     x_features = ["state", "control"]
     y_features = ["target"]
 
@@ -20,16 +20,13 @@ class Linear(nn.Module, ModelWithSpec):
     def __init__(self) -> None:
         super().__init__()
 
-        self.layer = nn.Linear(self.__class__.in_features, self.__class__.out_features)
+        self.layer = nn.Sequential(
+            nn.Linear(self.__class__.in_features, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            nn.Linear(32, self.__class__.out_features),
+        )
 
     def forward(self, x):
         return self.layer(x)
-
-
-class AutorallyLinear(Linear):
-    name = "autorally-linear"
-    x_features = ["autorally-state", "control"]
-    y_features = ["autorally-ground-truth"]
-
-    in_features = 9
-    out_features = 6

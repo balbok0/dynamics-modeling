@@ -3,6 +3,7 @@ __pycache__
 *.pdf
 bags/
 *.bag
+*.h5cache
 
 # Temp files
 tmp*

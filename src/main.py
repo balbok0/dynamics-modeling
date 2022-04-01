@@ -10,20 +10,35 @@ def plot_preds_vs_gt(model, dataloader):
     with torch.no_grad():
         for x, y, t in dataloader:
             y_pred = model(x)
-            y_pred *= t
+            y_pred *= t  # Acceleration
             total_y_true.extend(y.numpy())
             total_y_pred.extend(y_pred.numpy())
             total_ts.extend(t.numpy())
 
-    np.save("data/y_pred.npy", np.array(total_y_pred))
-    np.save("data/y_true.npy", np.array(total_y_true))
-    np.save("data/ts.npy", np.array(total_ts))
+    total_y_pred = np.array(total_y_pred)
+    total_y_true = np.array(total_y_true)
+    total_ts = np.array(total_ts)
 
-    total_y_pred = dataloader.dataset.rollout_single_seq(np.array(total_y_pred))
-    total_y_true = dataloader.dataset.rollout_single_seq(np.array(total_y_true))
+    np.save("data/y_pred.npy", total_y_pred)
+    np.save("data/y_true.npy", total_y_true)
+    np.save("data/ts.npy", total_ts)
 
-    # total_y_pred = np.cumsum(total_y_pred, axis=1)
-    # total_y_true = np.cumsum(total_y_true, axis=1)
+    def unroll_y(y: np.ndarray, t: np.ndarray):
+        thetas = np.cumsum(y[:, 1] * t)
+
+        along_vecs = []
+
+        for theta, vx, dt in zip(thetas, y[:, 0], t):
+            along_vec = np.array([np.cos(theta), np.sin(theta)])
+            along_vec /= np.linalg.norm(along_vec)
+            along_vec *= vx * dt
+            along_vecs.append(along_vec)
+
+        return np.cumsum(np.array(along_vecs), axis=0)
+
+
+    total_y_pred = unroll_y(total_y_pred, total_ts)
+    total_y_true = unroll_y(total_y_true, total_ts)
 
     plt.plot(total_y_pred[:, 0], total_y_pred[:, 1], label="Pred")
     plt.plot(total_y_true[:, 0], total_y_true[:, 1], label="True")
@@ -47,15 +62,18 @@ def main():
     if model.dataset_name == "numpy":
         model = train_numpy(data, model)
     elif model.dataset_name == "torch_lookahead":
+        import torch
         from torch import optim, nn
         from torch.utils.data import DataLoader
         dl = DataLoader(data, batch_size=32, shuffle=False)
         model = model()
 
-        train_torch_simple(model, optim.Adam(model.parameters()), dl, nn.MSELoss(), 20)
+        train_torch_simple(model, optim.Adam(model.parameters()), dl, nn.MSELoss(), 200)
+
+        model_scripted = torch.jit.script(model) # Export to TorchScript
+        model_scripted.save('model_scripted.pt') # Save
 
         plot_preds_vs_gt(model, dl)
-
 
 
 if __name__ == "__main__":

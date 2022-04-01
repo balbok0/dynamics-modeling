@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 from tqdm import tqdm
 
-from .abstract_sequence_reader import AbstractSequenceReader, Sequence
+from .abstract_sequence_reader import AbstractSequenceReader, Sequence, Sequences
 from ..transforms import get_topics_and_transforms
 from ..filters import AbstractFilter
 
@@ -19,33 +19,25 @@ class ASyncSequenceReader(AbstractSequenceReader):
         assert len(features_to_record_on) > 0, "features_to_record_on must be a non-empty list"
         assert set(features_to_record_on).issubset(set(required_keys))
 
-        self._sequences = []
+        self._sequences: Sequences = []
 
-        self.features_to_record_on = []
+        self.features_to_record_on = features_to_record_on
 
     @property
-    def sequences(self):
+    def sequences(self) -> Sequences:
         return self._sequences
 
     def _transform_raw_sequences(self):
-        print(f"Raw sequences gotten: {len(self.cur_bag_raw_sequences)}")
         for raw_sequence in self.cur_bag_raw_sequences:
-            print("Here 1")
-
             # Set is used to ensure timestamps are unique
             tmp = set()
             # Raw sequence keys
-            print(f"Raw sequence: {list(raw_sequence.keys())}")
-            print(f"Features to record on: {self.features_to_record_on}")
             for feature_name in self.features_to_record_on:
                 tmp.update(raw_sequence[feature_name][1])
-            print(f"tmp len: {len(tmp)}")
             if not tmp:
                 # If the sequence is empty, ignore it
                 continue
-            ts_to_record_on = np.sort(tmp)
-
-            print("Here 2")
+            ts_to_record_on = np.sort(list(tmp))
 
             # Traverse sequentially through timestamps to be logged on
             # Ensure that all of the required keys are present at the time of logging
@@ -56,7 +48,7 @@ class ASyncSequenceReader(AbstractSequenceReader):
             }
             sequence: Sequence = {
                 feature_name: []
-                for feature_name in self.required_keys
+                for feature_name in self.required_keys + ["time"]
             }
             for ts in ts_to_record_on:
                 # For each feature get the latest index that is less than or equal to the current timestamp
@@ -80,6 +72,8 @@ class ASyncSequenceReader(AbstractSequenceReader):
 
             # Add sequence to the list of sequences, if it's non-empty
             if len(sequence) > 0:
+                for key in sequence.keys():
+                    sequence[key] = np.array(sequence[key])
                 self.sequences.append(sequence)
 
     def extract_bag_data(self, bag_file_path: Union[str, Path]):

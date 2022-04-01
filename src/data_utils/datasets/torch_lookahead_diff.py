@@ -102,10 +102,6 @@ class LookaheadDiffSequenceDataset(Dataset, NamedDataset):
         for s in seqs:
             # Get data for sequence
             s_len = len(s[x_features[0]]) - n_steps - delay_steps
-            for a in [
-                s[f][:s_len] for f in x_features
-            ]:
-                print(a.shape)
             x_s = np.concatenate([
                 s[f][:s_len] for f in x_features
             ], axis=1)

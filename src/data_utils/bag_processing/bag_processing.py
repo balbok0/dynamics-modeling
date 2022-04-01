@@ -7,12 +7,12 @@ from .filters import ForwardFilter, PIDInfoFilter
 
 def load_bag(data_folder: Path, dataset_name: str, features: List[str], robot_type: str):
     # filters = [ForwardFilter(), PIDInfoFilter()]
-    filters = [ForwardFilter()]
+    filters = [ForwardFilter(), PIDInfoFilter()]
 
     # TODO: Add parsing for skid. Bags should also be able to just subscribe to cmd_vel
     reader: AbstractSequenceReader
-    # reader = ASyncSequenceReader(features, features_to_record_on=["control"], filters=filters)
-    reader = FixedIntervalReader(features, filters=filters)
+    reader = ASyncSequenceReader(features, features_to_record_on=["control"], filters=filters)
+    # reader = FixedIntervalReader(features, filters=filters)
 
     if robot_type == "ackermann":
         for file_path in data_folder.rglob("*.bag"):

@@ -1,7 +1,11 @@
 from abc import ABC, abstractmethod, abstractproperty
 from collections import defaultdict
+import hashlib
+import os
 from pathlib import Path
 
+import inspect
+import h5py
 import numpy as np
 from tqdm import tqdm
 from ..filters import AbstractFilter, get_filters_topics
@@ -24,6 +28,22 @@ RawSequence = Dict[str, Tuple[List, List]]  # Similar
 
 # Multiple Sequences. Return type to main process.
 Sequences = List[Sequence]
+
+
+# Hashing utility
+# Source: 
+# BUF_SIZE is totally arbitrary, change for your app!
+BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
+
+def hash_file(path: Path) -> str:
+    md5 = hashlib.md5()
+    with open(path, 'rb') as f:
+        while True:
+            data = f.read(BUF_SIZE)
+            if not data:
+                break
+            md5.update(data)
+    return md5.hexdigest()
 
 
 class AbstractSequenceReader(ABC):
@@ -51,6 +71,104 @@ class AbstractSequenceReader(ABC):
     def sequences(self) -> Sequences:
         pass
 
+    def __write_raw_sequences_to_cache(self, bag_file_path: Path, transforms: Set[AbstractFilter]):
+        # First get the hash. It only depends on filters used (self.filters).
+        # NOTE: These are raw sequences only, so we don't need to include transforms, meaning we only depend on logic in the abstract_sequence_reader.
+        class_filter_hash = hashlib.md5(" ".join([f.__class__.__name__ for f in self.filters]).encode("utf-8")).hexdigest()
+        cache_file_path = bag_file_path.parent / f"{bag_file_path.stem}_{class_filter_hash}_.h5cache"
+
+        with h5py.File(cache_file_path, "w") as hf:
+            # First write the meta keys.
+            hf_meta = hf.create_group("meta")
+
+            # First hash the abstract sequence reader itself.
+            hf_meta["sequence_reader_hash"] = hash_file(__file__)
+
+            # Then hash the filters and transf.
+            for f_ in set(self.filters) | transforms:
+                key = f_.__class__.__name__
+                hf_key = hf_meta.create_group(key)
+
+                key_path = inspect.getsourcefile(f_.__class__)
+                common_prefix = os.path.commonprefix([key_path, __file__])
+                file_path = os.path.relpath(key_path, Path(__file__).parent)
+                hf_key["file_path"] = file_path
+                hf_key["file_hash"] = hash_file(Path(__file__).parent / file_path)
+
+            # Then write the raw sequences.
+            for sequence_idx, sequence in enumerate(self.cur_bag_raw_sequences):
+                hf_sequence = hf.create_group(f"sequence_{sequence_idx}")
+                for k, v in sequence.items():
+                    hf_sequence.create_group(k)
+                    hf_sequence[k]["data"] = v[0]
+                    hf_sequence[k]["time"] = v[1]
+
+    def __read_raw_sequences_from_cache(self, bag_file_path: Path) -> Optional[List[RawSequence]]:
+        """
+        Check if bag file has already been processed. If so, return cached sequences.
+        If not, return None.
+        """
+
+        # First get the hash. It only depends on filters used (self.filters).
+        # NOTE: These are raw sequences only, so we don't need to include transforms, meaning we only depend on logic in the abstract_sequence_reader.
+        class_filter_hash = hashlib.md5(" ".join([f.__class__.__name__ for f in self.filters]).encode("utf-8")).hexdigest()
+        cache_file_path = bag_file_path.parent / f"{bag_file_path.stem}_{class_filter_hash}_.h5cache"
+
+        # If cache doesn't exist, return None.
+        if not cache_file_path.exists():
+            return None
+
+        with h5py.File(cache_file_path, "r") as hf:
+            # If meta key doesn't exist, then it's an old cache file.
+            if "meta" not in hf:
+                return None
+
+            # Verify that the cache file has subset of the required keys.
+            if not (self.required_keys_set).issubset(hf["meta"].keys()):
+                return None
+
+            # Verify that the cache file has subset of the filters as well
+            if not set([f.__class__.__name__ for f in self.filters]).issubset(hf["meta"].keys()):
+                return None
+
+            for key in self.required_keys_set | set([f.__class__.__name__ for f in self.filters]):
+                # For each feature key, check what is the hash of the file that generates it.
+                key_path = Path(__file__).parent / hf["meta"][key]["file_path"]
+                key_hash = hf["meta"][key]["file_hash"]
+
+                # If the feature doesn't exist here than it's a new feature, or something else changed.
+                if not key_path.exists():
+                    return None
+
+                cur_hash = hash_file(key_path)
+
+                # If the hash doesn't match, then the file has changed.
+                if key_hash != cur_hash:
+                    return None
+
+            # Lastly check whether this file is newer than the cached version.
+            if hf["meta"]["sequence_reader_hash"] != hash_file(__file__):
+                return None
+
+            # All of the checks passed, so we can load the cache
+            sequences = []
+            for sequence_key in filter(lambda x: x.startswith("sequence"), hf.keys()):
+                # If required keys are not in the sequence, then it's not a valid sequence.
+                # Probably something got corrupted during saving of cache. Return None
+                if not (self.required_keys_set).issubset(hf[sequence_key].keys()):
+                    return None
+
+                hf_sequence = hf[sequence_key]
+                sequence = {}
+                for feature_key in self.required_keys_set:
+                    sequence[feature_key] = (
+                        np.array(hf_sequence[feature_key]["data"]),
+                        np.array(hf_sequence[feature_key]["time"]),
+                    )
+                sequences.append(sequence)
+
+        return sequences
+
     @abstractmethod
     def extract_bag_data(self, bag_file_path: Union[str, Path]):
         """Extract Bag Data.
@@ -68,6 +186,13 @@ class AbstractSequenceReader(ABC):
 
     def _extract_raw_sequences(self, bag_file_path: Union[str, Path]):
         bag_file_path = Path(bag_file_path)
+
+        # First check cache
+        cached_result = self.__read_raw_sequences_from_cache(bag_file_path)
+        if cached_result is not None:
+            self.cur_bag_raw_sequences = cached_result
+            return
+
         bag = rosbag.Bag(bag_file_path)
         topics = bag.get_type_and_topic_info().topics
 
@@ -139,6 +264,9 @@ class AbstractSequenceReader(ABC):
 
             # Reset current sequence
             self.cur_raw_sequence = defaultdict(lambda: ([], []))
+
+        # Write cache
+        self.__write_raw_sequences_to_cache(bag_file_path, transforms)
 
     def verify_sequence(self, sequence: Sequence) -> bool:
         """
