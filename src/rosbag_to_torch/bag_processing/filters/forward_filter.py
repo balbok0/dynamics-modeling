@@ -1,13 +1,11 @@
 from typing import Union
-from genpy import Duration
-from rospy import AnyMsg, Time
+from rospy import Time, Duration
 from nav_msgs.msg import Odometry
 
-from data_utils.bag_processing.msg_stubs import PIDInfo
+from ..msg_stubs import PIDInfo
 from .abstract_filter import AbstractFilter
 
 class ForwardFilter(AbstractFilter):
-    name = "forward"
     topics = [{'/{robot_name}/pid_info', '/{robot_name}/odom'}]
 
     def __init__(self) -> None:

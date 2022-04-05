@@ -1,19 +1,24 @@
-from functools import lru_cache
-from typing import Dict, List, Type
+from typing import Dict, List, Union
 import numpy as np
 import h5py as h5
 from pathlib import Path
-from inspect import isclass, ismodule
+from torch.utils.data import Dataset
 
-from data_utils.datasets.named_dataset import NamedDataset
+from data_utils.numpy_set import NumpyDataset
 
-from .bag_processing.bag_processing import load_bag
+from .rosbag_to_torch_interface import datasets, readers, filters
+import rosbag_to_torch
 from .hdf5_processing import hdf5_extract_data
 
 SequenceData = Dict[str, np.ndarray]  # TODO: For really big datasets, this should also have a possible type of Callable[[], SequenceData]
 # TODO: Also long reach, but we should be requiring "time" to be a key. This way
 
-def load_dataset(dataset_name: str, x_features: List[str], y_features: List[str], robot_type: str, dataset_type: str) -> List[SequenceData]:
+def load_dataset(dataset_name: str, config: Dict) -> List[SequenceData]:
+    x_features = config["features"]["x"]
+    y_features = config["features"]["y"]
+    robot_type = config["robot"]["type"]
+    dataset_type = config["dataset"]["type"]
+
     data_folder: Path = Path("datasets") / dataset_name
 
     result = []
@@ -29,7 +34,14 @@ def load_dataset(dataset_name: str, x_features: List[str], y_features: List[str]
                 result.extend(hdf5_extract_data(dataset_name, f))
 
     # Bag Processing
-    result.extend(load_bag(data_folder, dataset_name, x_features + y_features, robot_type))
+    result.extend(rosbag_to_torch.load_bags(
+        data_folder,
+        readers[config["dataset"]["reader"]["type"]](
+            required_keys=x_features + y_features,
+            filters=[filters[f_]() for f_ in config["dataset"].get("filter", [])],
+            **config["dataset"]["reader"]["args"]
+        )
+    ))
 
     if not result:
         raise ValueError(
@@ -96,41 +108,17 @@ def load_numpy(data_folder: Path, dataset_name: str, features: List[str], robot_
     return seqs
 
 
-def get_all_datasets(module = None, explored_modules = None) -> Dict[str, Type[NamedDataset]]:
-    def filter_for_models_with_spec(k, v):
-        return (
-            not k.startswith("__")  # __main__ etc.
-            and isclass(v)
-            and not k == "NamedDataset"
-            and issubclass(v, NamedDataset)
-        )
+def get_all_datasets(module = None, explored_modules = None) -> Dict[str, Union[Dataset, NumpyDataset]]:
+    return datasets
 
-    if module is None:
-        from . import datasets
-        module = datasets
-    if explored_modules is None:
-        explored_modules = set()
-
-    explored_modules.add(module)
-
-    result = dict()
-    for k, v in vars(module).copy().items():
-        if ismodule(v) and v not in explored_modules:
-            recurse = get_all_datasets(v, explored_modules)
-            result |= recurse
-        elif filter_for_models_with_spec(k, v):
-            result[v.name] = v
-    return result
 
 def convert_data_to_dataset(data: List[SequenceData], dataset_type: str, x_features: List[str], y_features: List[str]):
-    datasets_types = get_all_datasets()
-
-    if dataset_type not in datasets_types:
+    if dataset_type not in datasets:
         raise ValueError(
             f"Model named {dataset_type} not found.\n"
-            f"Available models are {', '.join(datasets_types.keys())}"
+            f"Available models are {', '.join(datasets.keys())}"
         )
-    return datasets_types[dataset_type](
+    return datasets[dataset_type](
         seqs=data,
         x_features=x_features,
         y_features=y_features,

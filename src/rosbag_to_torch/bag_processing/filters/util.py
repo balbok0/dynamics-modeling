@@ -24,7 +24,7 @@ def get_filters_topics(
                     result[topic].append(filter_)
                 break
             raise ValueError(
-                "Filter {} has no set of topics that it can use in the bag.".format(filter_.name)
+                "Filter {} has no set of topics that it can use in the bag.".format(filter_.__class__.__name__)
             )
 
     return result

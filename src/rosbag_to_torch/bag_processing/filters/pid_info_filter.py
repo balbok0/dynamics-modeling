@@ -1,5 +1,3 @@
-from typing import List, Set
-
 from rospy import Time
 
 from ..msg_stubs import PIDInfo, PolarisControlMode
@@ -7,7 +5,6 @@ from .abstract_filter import AbstractFilter
 
 
 class PIDInfoFilter(AbstractFilter):
-    name = "pid_info"
     topics = [{'/{robot_name}/pid_info'}]
 
     def __init__(self) -> None:

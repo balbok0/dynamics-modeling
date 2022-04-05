@@ -1,9 +1,8 @@
 from typing import Dict, List
 
 import numpy as np
-from .named_dataset import NamedDataset
 
-class NumpyDataset(NamedDataset):
+class NumpyDataset:
     name = "numpy"
 
     def __init__(

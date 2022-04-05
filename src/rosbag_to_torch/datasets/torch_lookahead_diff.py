@@ -2,11 +2,10 @@ from typing import Dict, List, Optional, Tuple, Union
 import warnings
 import numpy as np
 import torch
-from .named_dataset import NamedDataset
 from torch.utils.data import Dataset
 from torch import nn
 
-class LookaheadDiffSequenceDataset(Dataset, NamedDataset):
+class LookaheadDiffSequenceDataset(Dataset):
     name = "torch_lookahead_diff"
 
     def __init__(

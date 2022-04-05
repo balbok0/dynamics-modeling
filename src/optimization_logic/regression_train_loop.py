@@ -24,7 +24,6 @@ def train(
     verbose: bool = True,
 ):
     writer = SummaryWriter()
-    criterion = nn.MSELoss()
 
     trange_epochs = trange(epochs, desc="Epochs", disable=not verbose, leave=True)
     for epoch in trange_epochs:

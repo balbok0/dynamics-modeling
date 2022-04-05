@@ -3,11 +3,6 @@ from typing import List, Set
 from rospy import AnyMsg, Time
 
 class AbstractFilter(ABC):
-
-    @abstractproperty
-    def name(self) -> str:
-        pass
-
     @abstractproperty
     def topics(self) -> List[Set[str]]:
         """

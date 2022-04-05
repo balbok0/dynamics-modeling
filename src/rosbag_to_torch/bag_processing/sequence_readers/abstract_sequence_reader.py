@@ -9,7 +9,7 @@ import h5py
 import numpy as np
 from tqdm import tqdm
 
-from data_utils.bag_processing.transforms.abstract_transform import AbstractTransform
+from ..transforms import AbstractTransform
 from ..filters import AbstractFilter, get_filters_topics
 import rospy
 import rosbag

@@ -8,13 +8,13 @@ from .abstract_sequence_reader import AbstractSequenceReader, Sequence, Sequence
 from ..transforms import get_topics_and_transforms
 from ..filters import AbstractFilter
 
-import rospy
-import rosbag
-
 
 class ASyncSequenceReader(AbstractSequenceReader):
     def __init__(self, required_keys: List[str], features_to_record_on: List[str], filters: List[AbstractFilter] = [],  *args, **kwargs) -> None:
         super().__init__(required_keys, filters, *args, **kwargs)
+
+        if isinstance(features_to_record_on, str):
+            features_to_record_on = [features_to_record_on]
 
         assert len(features_to_record_on) > 0, "features_to_record_on must be a non-empty list"
         assert set(features_to_record_on).issubset(set(required_keys))
