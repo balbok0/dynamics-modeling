@@ -8,6 +8,8 @@ import inspect
 import h5py
 import numpy as np
 from tqdm import tqdm
+
+from data_utils.bag_processing.transforms.abstract_transform import AbstractTransform
 from ..filters import AbstractFilter, get_filters_topics
 import rospy
 import rosbag
@@ -86,7 +88,14 @@ class AbstractSequenceReader(ABC):
 
             # Then hash the filters and transf.
             for f_ in set(self.filters) | transforms:
-                key = f_.__class__.__name__
+                if isinstance(f_, AbstractFilter):
+                    # Filter
+                    key = f_.__class__.__name__
+                elif isinstance(f_, AbstractTransform):
+                    # Transform
+                    key = f_.feature
+                else:
+                    raise ValueError(f"Unknown transform/filter type: {f_}. It should be subclass of AbstractFilter or AbstractTransform.")
                 hf_key = hf_meta.create_group(key)
 
                 key_path = inspect.getsourcefile(f_.__class__)
@@ -133,8 +142,8 @@ class AbstractSequenceReader(ABC):
 
             for key in self.required_keys_set | set([f.__class__.__name__ for f in self.filters]):
                 # For each feature key, check what is the hash of the file that generates it.
-                key_path = Path(__file__).parent / hf["meta"][key]["file_path"]
-                key_hash = hf["meta"][key]["file_hash"]
+                key_path = Path(__file__).parent / hf["meta"][key]["file_path"][()].decode("utf-8")
+                key_hash = hf["meta"][key]["file_hash"][()].decode("utf-8")
 
                 # If the feature doesn't exist here than it's a new feature, or something else changed.
                 if not key_path.exists():
@@ -147,7 +156,7 @@ class AbstractSequenceReader(ABC):
                     return None
 
             # Lastly check whether this file is newer than the cached version.
-            if hf["meta"]["sequence_reader_hash"] != hash_file(__file__):
+            if hf["meta"]["sequence_reader_hash"][()].decode("utf-8") != hash_file(__file__):
                 return None
 
             # All of the checks passed, so we can load the cache
@@ -184,14 +193,29 @@ class AbstractSequenceReader(ABC):
         """
         pass
 
-    def _extract_raw_sequences(self, bag_file_path: Union[str, Path]):
+    def _extract_raw_sequences(self, bag_file_path: Union[str, Path], use_cache: bool = True, save_cache: bool = True):
+        """
+        Extract raw sequences from bag file, and store them in self.cur_bag_raw_sequences.
+
+        Args:
+            bag_file_path (Union[str, Path]): Bag file to extract raw sequences from.
+            use_cache (bool, optional): Whether to check and use of cache.
+                If False, bag file will always be opened and run through entirely.
+                Defaults to True.
+            save_cache (bool, optional): Whether to save cur_bag_raw_sequences to cache at the end.
+                Ignored if sequences come from loaded cache file.
+                Defaults to True.
+        """
+
         bag_file_path = Path(bag_file_path)
 
         # First check cache
-        cached_result = self.__read_raw_sequences_from_cache(bag_file_path)
-        if cached_result is not None:
-            self.cur_bag_raw_sequences = cached_result
-            return
+        if use_cache:
+            cached_result = self.__read_raw_sequences_from_cache(bag_file_path)
+            if cached_result is not None:
+                print(f"Using cached result for bag: {bag_file_path}.")
+                self.cur_bag_raw_sequences = cached_result
+                return
 
         bag = rosbag.Bag(bag_file_path)
         topics = bag.get_type_and_topic_info().topics
@@ -266,7 +290,8 @@ class AbstractSequenceReader(ABC):
             self.cur_raw_sequence = defaultdict(lambda: ([], []))
 
         # Write cache
-        self.__write_raw_sequences_to_cache(bag_file_path, transforms)
+        if save_cache:
+            self.__write_raw_sequences_to_cache(bag_file_path, transforms)
 
     def verify_sequence(self, sequence: Sequence) -> bool:
         """
