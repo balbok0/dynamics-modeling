@@ -98,7 +98,6 @@ class AbstractSequenceReader(ABC):
                 hf_key = hf_meta.create_group(key)
 
                 key_path = inspect.getsourcefile(f_.__class__)
-                common_prefix = os.path.commonprefix([key_path, __file__])
                 file_path = os.path.relpath(key_path, Path(__file__).parent)
                 hf_key["file_path"] = file_path
                 hf_key["file_hash"] = hash_file(Path(__file__).parent / file_path)
@@ -124,19 +123,23 @@ class AbstractSequenceReader(ABC):
 
         # If cache doesn't exist, return None.
         if not cache_file_path.exists():
+            print("Cache file doesn't exist. Returning None.")
             return None
 
         with h5py.File(cache_file_path, "r") as hf:
             # If meta key doesn't exist, then it's an old cache file.
             if "meta" not in hf:
+                print("No meta key in cache file.")
                 return None
 
             # Verify that the cache file has subset of the required keys.
             if not (self.required_keys_set).issubset(hf["meta"].keys()):
+                print(f"Cache file {cache_file_path} has different required keys in meta. Re-processing.")
                 return None
 
             # Verify that the cache file has subset of the filters as well
             if not set([f.__class__.__name__ for f in self.filters]).issubset(hf["meta"].keys()):
+                print("Cache file has different filters. Re-processing.")
                 return None
 
             for key in self.required_keys_set | set([f.__class__.__name__ for f in self.filters]):
@@ -146,16 +149,19 @@ class AbstractSequenceReader(ABC):
 
                 # If the feature doesn't exist here than it's a new feature, or something else changed.
                 if not key_path.exists():
+                    print(f"Failed to path to file for meta key: {key}. Expected path: {key_path}")
                     return None
 
                 cur_hash = hash_file(key_path)
 
                 # If the hash doesn't match, then the file has changed.
                 if key_hash != cur_hash:
+                    print(f"Failed when comparing hashes for meta key: {key}. Expected hash: {key_hash}, got: {cur_hash}")
                     return None
 
             # Lastly check whether this file is newer than the cached version.
             if hf["meta"]["sequence_reader_hash"][()].decode("utf-8") != hash_file(__file__):
+                print("Failed when comparing sequence reader hash for Abstract Sequence Reader.")
                 return None
 
             # All of the checks passed, so we can load the cache
@@ -164,6 +170,7 @@ class AbstractSequenceReader(ABC):
                 # If required keys are not in the sequence, then it's not a valid sequence.
                 # Probably something got corrupted during saving of cache. Return None
                 if not (self.required_keys_set).issubset(hf[sequence_key].keys()):
+                    print(f"Cache file {cache_file_path} has different required keys. Re-processing.")
                     return None
 
                 hf_sequence = hf[sequence_key]
@@ -313,3 +320,10 @@ class AbstractSequenceReader(ABC):
         """
         self.cur_bag_raw_sequences: List[RawSequence] = []
         self.cur_raw_sequence = defaultdict(lambda: ([], []))
+
+    @abstractmethod
+    def reset(self):
+        """Resets the reader to the beginning of the sequence list.
+        Should clear the sequences field.
+        """
+        pass

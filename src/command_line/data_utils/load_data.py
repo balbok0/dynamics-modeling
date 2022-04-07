@@ -4,10 +4,10 @@ import h5py as h5
 from pathlib import Path
 from torch.utils.data import Dataset
 
-from data_utils.numpy_set import NumpyDataset
+from .numpy_set import NumpyDataset
 
 from .rosbag_to_torch_interface import datasets, readers, filters
-import rosbag_to_torch
+import rosbag2torch
 from .hdf5_processing import hdf5_extract_data
 
 SequenceData = Dict[str, np.ndarray]  # TODO: For really big datasets, this should also have a possible type of Callable[[], SequenceData]
@@ -34,7 +34,7 @@ def load_dataset(dataset_name: str, config: Dict) -> List[SequenceData]:
                 result.extend(hdf5_extract_data(dataset_name, f))
 
     # Bag Processing
-    result.extend(rosbag_to_torch.load_bags(
+    result.extend(rosbag2torch.load_bags(
         data_folder,
         readers[config["dataset"]["reader"]["type"]](
             required_keys=x_features + y_features,
@@ -48,7 +48,9 @@ def load_dataset(dataset_name: str, config: Dict) -> List[SequenceData]:
             f"Dataset: {dataset_name} not found. Ensure that is a folder under \'datasets/\' directory"
         )
 
-    return convert_data_to_dataset(result, dataset_type, x_features, y_features)
+    dataset_kwargs = config["dataset"].get("args", {})
+
+    return convert_data_to_dataset(result, dataset_type, x_features, y_features, **dataset_kwargs)
 
 
 def load_numpy(data_folder: Path, dataset_name: str, features: List[str], robot_type: str):
@@ -112,14 +114,17 @@ def get_all_datasets(module = None, explored_modules = None) -> Dict[str, Union[
     return datasets
 
 
-def convert_data_to_dataset(data: List[SequenceData], dataset_type: str, x_features: List[str], y_features: List[str]):
+def convert_data_to_dataset(data: List[SequenceData], dataset_type: str, x_features: List[str], y_features: List[str], **dataset_kwargs):
     if dataset_type not in datasets:
         raise ValueError(
             f"Model named {dataset_type} not found.\n"
             f"Available models are {', '.join(datasets.keys())}"
         )
+
+    print(dataset_type)
     return datasets[dataset_type](
         seqs=data,
         x_features=x_features,
         y_features=y_features,
+        **dataset_kwargs
     )

@@ -96,9 +96,9 @@ def main():
 
 
 if __name__ == "__main__":
-    from parse_args import parse_args
-    from data_utils import load_dataset
-    from models import load_model
-    from optimization_logic import train_numpy, train_torch_simple
+    from command_line.parse_args import parse_args
+    from command_line.data_utils import load_dataset
+    from command_line.models import load_model
+    from command_line.optimization_logic import train_numpy, train_torch_simple
 
     main()

@@ -68,8 +68,10 @@ class FixedIntervalReader(AbstractSequenceReader):
 
             self._sequences.append(cur_sequence)
 
-
     def extract_bag_data(self, bag_file_path: Union[str, Path]):
         self._extract_raw_sequences(bag_file_path)
         self._transform_raw_sequences()
         self.end_bag()
+
+    def reset(self):
+        self._sequences = []
