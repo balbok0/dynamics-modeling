@@ -1,7 +1,6 @@
 dataset:
   train_name: rzr_real_bag  # Name of folder under datasets/ with bags of interest
   val_name: rzr_real_bag_val  # OPTIONAL. Name of folder under datasets/ with bags to be used for validation
-  type: torch_lookahead
   reader:
     type: async  # TODO: Add reader parsing
     args:
@@ -9,8 +8,10 @@ dataset:
   filters:
     - forward
     - pid_info
-  n-steps: 1  # How many steps to predict into the future with
   train_ratio: 0.8  # How much of data to use for train. Rest is used for validation. Should be [0, 1]
+  type: torch_lookahead
+  args:
+    delay_steps: 1  # How many steps to predict into the future with
   # This is done on sequences.
 
 features:
@@ -21,8 +22,8 @@ features:
     - target
 
 model:
-  type: linear
-  save_prefix: linear_async
+  type: hidden-2-relu
+  save_prefix: hidden_async
 
 robot:
   type: ackermann  # ackermann or skid; Type of robot model to use
@@ -31,5 +32,5 @@ robot:
 train_loop:
   type: regression_train_loop
   args:
-    epochs: 1500
+    epochs: 500
     verbose: True
