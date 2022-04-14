@@ -1,4 +1,5 @@
-from .torch_lookahead import LookaheadSequenceDataset
-from .torch_lookahead_diff import LookaheadDiffSequenceDataset
+from .torch_lookahead import LookaheadDataset
+from .torch_lookahead_diff import LookaheadDiffDataset
+from .torch_sequence_lookahead import SequenceLookaheadDataset
 
-__all__ = ["LookaheadSequenceDataset", "LookaheadDiffSequenceDataset"]
+__all__ = ["LookaheadDataset", "LookaheadDiffDataset", "SequenceLookaheadDataset"]

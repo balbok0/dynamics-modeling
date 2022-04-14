@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset
 from torch import nn
 
-class LookaheadDiffSequenceDataset(Dataset):
+class LookaheadDiffDataset(Dataset):
     name = "torch_lookahead_diff"
 
     def __init__(

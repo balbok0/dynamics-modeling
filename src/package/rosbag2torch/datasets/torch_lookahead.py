@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset
 from torch import nn
 
-class LookaheadSequenceDataset(Dataset):
+class LookaheadDataset(Dataset):
     name = "torch_lookahead"
 
     def __init__(
@@ -57,7 +57,7 @@ class LookaheadSequenceDataset(Dataset):
         # Pre-allocate arrays, get indexes of corresponding features
         seqs_len = 0
         for s in seqs:
-            seqs_len += len(s[x_features[0]]) - delay_steps
+            seqs_len += max(0, len(s[x_features[0]]) - delay_steps)
 
         if remove_duplicates:
             x_seqs = []
@@ -73,6 +73,9 @@ class LookaheadSequenceDataset(Dataset):
         for s in seqs:
             # Get data for sequence
             s_len = len(s[x_features[0]]) - delay_steps
+            if s_len <= 0:
+                # Sequence too short to process
+                continue
             x_s = np.concatenate([
                 s[f][:s_len] for f in x_features
             ], axis=1)
