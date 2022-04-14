@@ -1,79 +1,14 @@
-from matplotlib import pyplot as plt
-from rosbag2torch import load_bags, readers, filters, LookaheadSequenceDataset
 from typing import Optional
+
+import numpy as np
 import torch
+from matplotlib import pyplot as plt
+from rosbag2torch import LookaheadDataset, filters, load_bags, readers
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
-import numpy as np
-
-
-def reconstruct_from_odoms(d_odom: np.ndarray, dt: np.ndarray, start_pose: Optional[np.ndarray] = None, delay_steps: int = 1):
-    """This function reconstructs the trajectory from odometry data.
-    Odometry data is assumed to be in the form of [v_x, v_y, v_theta] or [v_x, v_theta],
-    with dx and dy being in the robot frame.
-
-    Args:
-        d_odom (np.ndarray): A (n, 2) or (n, 3) array of odometry data.
-        dt (np.ndarray): A (n,) array of differences in timestamps.
-            It needs take delay_steps into account.
-            This means that: dt[i] = t[i + delay_steps] - t[i]
-        start_pose (Optional[np.ndarray], optional): A (3,) array of the starting pose (x, y, theta).
-            Defaults to (0, 0, 0).
-        delay_steps (int, optional): Number of steps taken for each prediction. Defaults to 1.
-
-    Returns:
-        _type_: _description_
-    """
-    assert len(d_odom.shape) == 2 and d_odom.shape[1] in {2, 3}, "d_odom must be a 2D array with 2 (dx, dtheta) or 3 (dx, dy, dtheta) columns"
-    assert delay_steps >= 1, "Delay steps must be at least 1"
-
-    # We expect dt to be a 1D array. It may be a (n, 1) array, in which case we'll reshape it to (n,).
-    dt = dt.squeeze()
-
-    d_x = d_odom[:, 0]
-    if d_odom.shape[1] == 2:
-        d_y = np.zeros_like(d_x)
-        d_theta = d_odom[:, 1]
-    else:
-        # Shape == 3
-        d_y = d_odom[:, 1]
-        d_theta = d_odom[:, 2]
-
-    if start_pose is None:
-        start_pose = np.array([0.0, 0.0, 0.0])
-
-    # Rollout each continuous sequence seperately
-    # Continuos sequence is meant by markovian chain where theta(i) = d_theta(i, j) + theta(j)
-    size_rollout = len(d_x) // delay_steps
-    delayed_size  = size_rollout * delay_steps
-    delayed_shape = (size_rollout, delay_steps)
-
-    # Reshape time series to (size_rollout, delay_steps)
-    t_delayed = dt[:delayed_size].reshape(delayed_shape)
-
-    thetas = np.reshape(d_theta[:delayed_size], delayed_shape)
-    thetas = np.cumsum(thetas * t_delayed, axis=0) + start_pose[2]
-    plt.plot(np.cumsum(dt[:len(thetas)]), thetas)
-    plt.show()
-
-    # Create vectors along and orthogonal to theta
-    along_vec = np.concatenate((np.cos(thetas)[:, None], np.sin(thetas)[:, None]), axis=2)
-    # Orthogonal vector is -sin(theta) along x and cos(theta) along y, so we can just use along
-    ortho_vec = along_vec[..., [1, 0]]
-    ortho_vec[..., 0] *= -1
-
-    along_vals = np.reshape(d_x[:delayed_size], delayed_shape)
-    ortho_vals = np.reshape(d_y[:delayed_size], delayed_shape)
-
-    poses = np.cumsum(t_delayed[:, None] * (along_vec * along_vals[:, None] + ortho_vec * ortho_vals[:, None]), axis=0)
-
-    poses = np.transpose(poses, (1, 0, 2)).reshape(-1, 2)
-    poses += start_pose[:2]
-
-    return poses
-
+from example_utils import reconstruct_from_acc, reconstruct_from_odoms
 
 def train(
     model: nn.Module,
@@ -89,6 +24,7 @@ def train(
     trange_epochs = trange(epochs, desc="Epochs", disable=not verbose, leave=True)
     for epoch in trange_epochs:
         running_loss = 0.0
+        running_baseline_loss = 0.0
         for x, y, dt in tqdm(train_loader, disable=not verbose, desc="Train", leave=False):
             optimizer.zero_grad()
             # acceleration * dt + prev state
@@ -100,41 +36,57 @@ def train(
             optimizer.step()
 
             running_loss += loss.detach().cpu().item()
-
-        optimizer.zero_grad()
+            running_baseline_loss += criterion(y, x[:, -2:]).detach().cpu().item()
 
         train_loss = running_loss / len(train_loader)
+        train_baseline_loss = running_baseline_loss / len(train_loader)
         writer.add_scalar("Loss/train", train_loss, epoch)
-        desc = f"Epochs Train Loss {train_loss:.4g}"
+        writer.add_scalar("Loss/train baseline (zero acc.)", train_baseline_loss, epoch)
+        desc = f"Epochs Train Loss {train_loss:.4g} (0 acc.) Loss {train_baseline_loss:.4g}"
 
         if val_loader is not None:
-            val_running_loss = 0.0
-            for x, y, dt in tqdm(val_loader, disable=not verbose, desc="Validation", leave=False):
-                optimizer.zero_grad()
-                y_pred = model(x) * dt
+            with torch.no_grad():
+                val_running_loss = 0.0
+                val_running_baseline_loss = 0.0
+                for x, y, dt in tqdm(val_loader, disable=not verbose, desc="Validation", leave=False):
+                    y_pred = model(x) * dt
 
-                loss = criterion(y_pred, y - x[:, -2:])
-                loss.backward()
-                optimizer.step()
+                    loss = criterion(y_pred, y - x[:, -2:])
 
-                val_running_loss += loss.detach().cpu().item()
+                    val_running_loss += loss.detach().cpu().item()
+                    val_running_baseline_loss += criterion(y, x[:, -2:]).detach().cpu().item()
+
 
             val_loss = val_running_loss / len(val_loader)
+            val_baseline_loss = val_running_baseline_loss / len(val_loader)
             writer.add_scalar("Loss/val", val_loss, epoch)
-            desc += f" Val Loss {val_loss:.4g}"
+            writer.add_scalar("Loss/val baseline (zero acc.)", val_baseline_loss, epoch)
+            desc += f" Val Loss {val_loss:.4g} (0 acc.) Loss {val_baseline_loss:.4g}"
 
         trange_epochs.set_description(desc)
 
 
 def main():
-    DELAY_STEPS = 1
-    EPOCHS = 500
+    DELAY_STEPS = 15
+    EPOCHS = 50
     TRAIN = False
-    PLOT_VAL = False
+    PLOT_VAL = True
+    PLOT_LEN_ROLLOUT = 10  # seconds
 
-    reader = readers.ASyncSequenceReader(
+    # # Async Reader
+    # reader = readers.ASyncSequenceReader(
+    #     ["control", "state", "target"],
+    #     features_to_record_on=["control"],
+    #     filters=[
+    #         filters.ForwardFilter(),
+    #         filters.PIDInfoFilter()
+    #     ]
+    # )
+
+    # Fixed Timestamp Reader
+    reader = readers.FixedIntervalReader(
         ["control", "state", "target"],
-        features_to_record_on=["control"],
+        log_interval=1 / 30.,
         filters=[
             filters.ForwardFilter(),
             filters.PIDInfoFilter()
@@ -142,6 +94,8 @@ def main():
     )
 
     val_sequences = load_bags("datasets/rzr_real_val", reader)
+
+    model_name = f"models/example_hidden2relu_delay_{DELAY_STEPS}_model.pt"
 
 
     if TRAIN:
@@ -156,9 +110,9 @@ def main():
         criterion = nn.MSELoss()
 
         train_sequences = load_bags("datasets/rzr_real", reader)
-        train_dataset = LookaheadSequenceDataset(train_sequences, ["control", "state"], ["target"], delay_steps=DELAY_STEPS)
+        train_dataset = LookaheadDataset(train_sequences, ["control", "state"], ["target"], delay_steps=DELAY_STEPS)
 
-        val_dataset = LookaheadSequenceDataset(val_sequences, ["control", "state"], ["target"], delay_steps=DELAY_STEPS)
+        val_dataset = LookaheadDataset(val_sequences, ["control", "state"], ["target"], delay_steps=DELAY_STEPS)
 
         train(
             model,
@@ -170,9 +124,9 @@ def main():
             verbose=True,
         )
 
-        torch.jit.script(model).save("models/example_hidden2relu_model.pt")
+        torch.jit.script(model).save(model_name)
     else:
-        model = torch.jit.load("models/example_hidden2relu_model.pt")
+        model = torch.jit.load(model_name)
 
     if PLOT_VAL:
         # Evaluate on the validation set
@@ -185,14 +139,30 @@ def main():
             y_zero_all = []
             y_pred_all = []
             dts_all = []
+            pred_acc_all = []
 
-            for x, y, dt in tqdm(DataLoader(LookaheadSequenceDataset([longest_val_sequence], ["control", "state"], ["target"], delay_steps=DELAY_STEPS), batch_size=1, shuffle=False), desc="Final Validation"):
-                y_pred = model(x) * dt + x[:, -2:]
+
+            for x, y, dt in tqdm(DataLoader(LookaheadDataset([longest_val_sequence], ["control", "state"], ["target"], delay_steps=DELAY_STEPS), batch_size=1, shuffle=False), desc="Final Validation"):
+                pred_acc = model(x)
+                y_pred = pred_acc * dt + x[:, -2:]
                 y_zero_all.extend(x[:, -2:].detach().cpu().numpy())
                 y_pred_all.extend(y_pred.detach().cpu().numpy())
                 y_true_all.extend(y.detach().cpu().numpy())
+                pred_acc_all.extend(pred_acc.detach().cpu().numpy())
                 dts_all.extend(dt.detach().cpu().numpy())
 
+            pred_acc_all = np.array(pred_acc_all)
+            v_disp_pred_all = pred_acc_all * np.array(dts_all)
+
+            # Plot histogram of predicted displacement
+            plt.hist2d(v_disp_pred_all[:, 0], v_disp_pred_all[:, 1], bins=100, cmap="Blues")
+            plt.xlabel("dx (m/s)")
+            plt.ylabel("dtheta (rad./s)")
+            plt.title("Predicted velocity Displacement (acc./model output * dt)")
+            plt.savefig(f"../artifacts/dx_dtheta_pred_delay_{DELAY_STEPS}.png")
+            plt.show()
+
+            # Convert from (dx, dtheta) to (dx, dy, dtheta)
             y_true_all = np.array(y_true_all)
             tmp = np.zeros((len(y_true_all), 3))
             tmp[:, 0] = y_true_all[:, 0]
@@ -213,25 +183,73 @@ def main():
 
             dts_all = np.array(dts_all)
 
-            # Plot the dx, dtheta for each
-            fig, axs = plt.subplots(3, 2, figsize=(10, 10))
-            for row_idx, (y, type_y) in enumerate(zip([y_true_all, y_zero_all, y_pred_all], ["True", "Zero", "Pred"])):
-                # for col_idx, col_name in enumerate(["dx", "dtheta"]):
-                #     axs[row_idx, col_idx].plot(np.cumsum(dts_all), y[:, col_idx])
-                #     axs[row_idx, col_idx].set_title(f"{type_y} - {col_name}")
-                for col_idx, (y_idx, col_name) in enumerate(zip([0, 2], ["dx", "dtheta"])):
-                    axs[row_idx, col_idx].plot(np.cumsum(dts_all), y[:, y_idx])
-                    axs[row_idx, col_idx].set_title(f"{type_y} - {col_name}")
-            plt.show()
+            # FIXME: Commented out code below is incorrect, since it doesn't unroll the acceleration
+            # # Plot the dx, dtheta for each configuration
+            # fig, axs = plt.subplots(3, 2, figsize=(10, 10))
+            # for row_idx, (y, type_y) in enumerate(zip([y_true_all, y_zero_all, y_pred_all], ["True", "Zero", "Pred"])):
+            #     # for col_idx, col_name in enumerate(["dx", "dtheta"]):
+            #     #     axs[row_idx, col_idx].plot(np.cumsum(dts_all), y[:, col_idx])
+            #     #     axs[row_idx, col_idx].set_title(f"{type_y} - {col_name}")
+            #     for col_idx, (y_idx, col_name) in enumerate(zip([0, 2], ["dx", "dtheta"])):
+            #         axs[row_idx, col_idx].plot(np.cumsum(dts_all), y[:, y_idx])
+            #         axs[row_idx, col_idx].set_title(f"{type_y} - {col_name}")
+            # plt.show()
+
+            # For Zero and Predicted plot rollouts only for PLOT_LEN_ROLLOUT seconds
+            idx = 0
+            ts = np.cumsum(dts_all)
+
+            # # DEBUG: Only use first 30 seconds of data. And override PLOT_LEN_ROLLOUT to 2s
+            # idxs = np.where(ts <= 30)[0]
+            # ts = ts[idxs]
+            # dts_all = dts_all[idxs]
+            # y_true_all = y_true_all[idxs]
+            # y_zero_all = y_zero_all[idxs]
+            # y_pred_all = y_pred_all[idxs]
+            # PLOT_LEN_ROLLOUT = 2
+
 
             poses_true = reconstruct_from_odoms(y_true_all, dts_all, delay_steps=DELAY_STEPS)
-            poses_zero = reconstruct_from_odoms(y_zero_all, dts_all, delay_steps=DELAY_STEPS)
-            poses_pred = reconstruct_from_odoms(y_pred_all, dts_all, delay_steps=DELAY_STEPS)
+            poses_zero_odom = reconstruct_from_odoms(y_zero_all, dts_all, delay_steps=DELAY_STEPS)
 
-            plt.plot(poses_true[:, 0], poses_true[:, 1], label="True")
-            plt.plot(poses_zero[:, 0], poses_zero[:, 1], label="Zero")
-            plt.plot(poses_pred[:, 0], poses_pred[:, 1], label="Pred")
+            # plt.plot(poses_true[:, 0], poses_true[:, 1], label="True")
+            plt.plot(poses_zero_odom[:, 0], poses_zero_odom[:, 1], label="True")
+            while idx * PLOT_LEN_ROLLOUT < ts[-1]:
+                cur_idxs = np.where(ts // PLOT_LEN_ROLLOUT == idx)[0]
+                if len(cur_idxs) <= DELAY_STEPS:
+                    idx += 1
+                    continue
+
+                # poses_zero = reconstruct_from_odoms(y_zero_all[cur_idxs], dts_all[cur_idxs], delay_steps=DELAY_STEPS, start_pose=poses_true[cur_idxs[0]])
+                # poses_pred = reconstruct_from_odoms(y_pred_all[cur_idxs], dts_all[cur_idxs], delay_steps=DELAY_STEPS, start_pose=poses_true[cur_idxs[0]])
+
+                # poses_first_idx = cur_idxs[0] // DELAY_STEPS
+                poses_first_idx = cur_idxs[0]
+
+                start_vel = np.array([np.cos(poses_zero_odom[poses_first_idx, 2]) * y_zero_all[cur_idxs[0], 0], np.sin(poses_zero_odom[poses_first_idx, 2]) * y_zero_all[cur_idxs[0], 0], y_zero_all[cur_idxs[0], 2]])
+
+                poses_pred = reconstruct_from_acc(pred_acc_all[cur_idxs], dts_all[cur_idxs], delay_steps=DELAY_STEPS, start_vel=start_vel, start_pose=poses_zero_odom[poses_first_idx])
+                poses_zero = reconstruct_from_acc(np.zeros((len(cur_idxs), 3)), dts_all[cur_idxs], delay_steps=DELAY_STEPS, start_vel=start_vel, start_pose=poses_zero_odom[poses_first_idx])
+
+                if poses_zero is None or poses_pred is None:
+                    idx += 1
+                    continue
+
+                poses_pred = np.vstack((poses_zero_odom[None, poses_first_idx], poses_pred))
+                poses_zero = np.vstack((poses_zero_odom[None, poses_first_idx], poses_zero))
+
+                if idx == 0:
+                    plt.plot(poses_zero[:, 0], poses_zero[:, 1], color="gray", label="Zero")
+                    plt.plot(poses_pred[:, 0], poses_pred[:, 1], color="orange", label="Pred")
+                else:
+                    plt.plot(poses_zero[:, 0], poses_zero[:, 1], color="gray")
+                    plt.plot(poses_pred[:, 0], poses_pred[:, 1], color="orange")
+
+                idx += 1
             plt.legend()
+            plt.xlabel("x (m)")
+            plt.ylabel("y (m)")
+            plt.savefig(f"../artifacts/full_rollout_{DELAY_STEPS}.png")
             plt.show()
 
 
