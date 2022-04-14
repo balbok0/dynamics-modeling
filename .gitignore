@@ -17,6 +17,8 @@ temp/
 # TensorBoard
 runs/
 
+# Saved models from examples
+models/
 
 # Python gitignore
 # Source: https://github.com/github/gitignore/blob/main/Python.gitignore
