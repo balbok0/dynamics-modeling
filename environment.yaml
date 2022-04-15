@@ -13,4 +13,6 @@ dependencies:
   - pip:
     - --extra-index-url https://rospypi.github.io/simple/
     - -e .
+    # Tensorboard
     - tensorboard
+    - torch-tb-profiler
