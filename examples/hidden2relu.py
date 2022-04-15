@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 import numpy as np
@@ -8,7 +9,7 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
-from example_utils import reconstruct_from_acc, reconstruct_from_odoms
+from example_utils import reconstruct_poses_from_acc, reconstruct_poses_from_odoms
 
 def train(
     model: nn.Module,
@@ -70,7 +71,7 @@ def train(
 def main():
     DELAY_STEPS = 15
     EPOCHS = 50
-    TRAIN = True
+    TRAIN = False
     PLOT_VAL = True
     PLOT_LEN_ROLLOUT = 10  # seconds
 
@@ -160,7 +161,9 @@ def main():
             plt.xlabel("dx (m/s)")
             plt.ylabel("dtheta (rad./s)")
             plt.title("Predicted velocity Displacement (acc./model output * dt)")
-            plt.savefig(f"../artifacts/dx_dtheta_pred_delay_{DELAY_STEPS}.png")
+            if not os.path.exists("plots"):
+                os.makedirs("plots")
+            plt.savefig(f"plots/dx_dtheta_pred_delay_{DELAY_STEPS}.png")
             plt.show()
 
             # Convert from (dx, dtheta) to (dx, dy, dtheta)
@@ -184,6 +187,12 @@ def main():
 
             dts_all = np.array(dts_all)
 
+            # We will only unroll continuous sequence.
+            dts_all = dts_all[::DELAY_STEPS]
+            y_true_all = y_true_all[::DELAY_STEPS]
+            y_zero_all = y_zero_all[::DELAY_STEPS]
+            y_pred_all = y_pred_all[::DELAY_STEPS]
+
             # FIXME: Commented out code below is incorrect, since it doesn't unroll the acceleration
             # # Plot the dx, dtheta for each configuration
             # fig, axs = plt.subplots(3, 2, figsize=(10, 10))
@@ -200,44 +209,23 @@ def main():
             idx = 0
             ts = np.cumsum(dts_all)
 
-            # # DEBUG: Only use first 30 seconds of data. And override PLOT_LEN_ROLLOUT to 2s
-            # idxs = np.where(ts <= 30)[0]
-            # ts = ts[idxs]
-            # dts_all = dts_all[idxs]
-            # y_true_all = y_true_all[idxs]
-            # y_zero_all = y_zero_all[idxs]
-            # y_pred_all = y_pred_all[idxs]
-            # PLOT_LEN_ROLLOUT = 2
-
-
-            poses_true = reconstruct_from_odoms(y_true_all, dts_all, delay_steps=DELAY_STEPS)
-            poses_zero_odom = reconstruct_from_odoms(y_zero_all, dts_all, delay_steps=DELAY_STEPS)
+            poses_true = reconstruct_poses_from_odoms(y_zero_all, dts_all)
 
             # plt.plot(poses_true[:, 0], poses_true[:, 1], label="True")
-            plt.plot(poses_zero_odom[:, 0], poses_zero_odom[:, 1], label="True")
+            plt.plot(poses_true[:, 0], poses_true[:, 1], label="True")
             while idx * PLOT_LEN_ROLLOUT < ts[-1]:
                 cur_idxs = np.where(ts // PLOT_LEN_ROLLOUT == idx)[0]
-                if len(cur_idxs) <= DELAY_STEPS:
-                    idx += 1
-                    continue
 
-                # poses_zero = reconstruct_from_odoms(y_zero_all[cur_idxs], dts_all[cur_idxs], delay_steps=DELAY_STEPS, start_pose=poses_true[cur_idxs[0]])
-                # poses_pred = reconstruct_from_odoms(y_pred_all[cur_idxs], dts_all[cur_idxs], delay_steps=DELAY_STEPS, start_pose=poses_true[cur_idxs[0]])
-
-                # poses_first_idx = cur_idxs[0] // DELAY_STEPS
                 poses_first_idx = cur_idxs[0]
 
-                start_vel = np.array([np.cos(poses_zero_odom[poses_first_idx, 2]) * y_zero_all[cur_idxs[0], 0], np.sin(poses_zero_odom[poses_first_idx, 2]) * y_zero_all[cur_idxs[0], 0], y_zero_all[cur_idxs[0], 2]])
+                start_vel = np.array([np.cos(poses_true[poses_first_idx, 2]) * y_zero_all[cur_idxs[0], 0], np.sin(poses_true[poses_first_idx, 2]) * y_zero_all[cur_idxs[0], 0], y_zero_all[cur_idxs[0], 2]])
 
-                poses_pred = reconstruct_from_acc(pred_acc_all[cur_idxs], dts_all[cur_idxs], delay_steps=DELAY_STEPS, start_vel=start_vel, start_pose=poses_zero_odom[poses_first_idx])
-                poses_zero = reconstruct_from_acc(np.zeros((len(cur_idxs), 3)), dts_all[cur_idxs], delay_steps=DELAY_STEPS, start_vel=start_vel, start_pose=poses_zero_odom[poses_first_idx])
+                poses_pred = reconstruct_poses_from_acc(pred_acc_all[cur_idxs], dts_all[cur_idxs], start_vel=start_vel, start_pose=poses_true[poses_first_idx])
+                poses_zero = reconstruct_poses_from_acc(np.zeros((len(cur_idxs), 3)), dts_all[cur_idxs], start_vel=start_vel, start_pose=poses_true[poses_first_idx])
 
                 if poses_zero is None or poses_pred is None:
                     idx += 1
                     continue
-
-                poses_pred = np.vstack((poses_zero_odom[None, poses_first_idx], poses_pred))
-                poses_zero = np.vstack((poses_zero_odom[None, poses_first_idx], poses_zero))
 
                 if idx == 0:
                     plt.plot(poses_zero[:, 0], poses_zero[:, 1], color="gray", label="Zero")
@@ -250,7 +238,9 @@ def main():
             plt.legend()
             plt.xlabel("x (m)")
             plt.ylabel("y (m)")
-            plt.savefig(f"../artifacts/full_rollout_{DELAY_STEPS}.png")
+            if not os.path.exists("plots"):
+                os.makedirs("plots")
+            plt.savefig(f"plots/hidden2relu_delay_{DELAY_STEPS}_rollout.png")
             plt.show()
 
 

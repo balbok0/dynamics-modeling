@@ -1,5 +1,6 @@
 from datetime import datetime
-from typing import List, Optional
+import os
+from typing import List, Optional, Tuple
 from collections import defaultdict
 from matplotlib import pyplot as plt
 import numpy as np
@@ -11,7 +12,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
 
-from example_utils import reconstruct_from_odoms
+from example_utils import reconstruct_poses_from_odoms
 
 
 class Model(nn.Module):
@@ -51,7 +52,8 @@ def unroll_sequence_torch(
     controls: torch.Tensor,
     dts: torch.Tensor,
 ) -> List[torch.Tensor]:
-    """
+    """ Unroll the model forward for a sequence of states.
+    In this function both states in and out are in robot frame.
 
     Args:
         model (nn.Module): Model to use for prediction of each step.
@@ -220,9 +222,85 @@ def train(
         trange_epochs.set_description(desc)
 
 
+def get_world_frame_rollouts(model: nn.Module, states: torch.Tensor, controls: torch.Tensor, dts: torch.Tensor, rollout_in_seconds: float) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
+    """Converts a sequence of robot frame states to world frame.
+    It then uses a model to rollout the trajectory of length rollout_in_seconds in world frame, for each such interval in sequence.
+
+    For example, if sequence if 10s long and rollout_in_seconds is 4s then this function will return:
+        - Continuous sequence of true poses of length 10s
+        - Start poses of each of predicted sequences (see below), corresponding to true poses at times 0s, 4s, 8s
+        - Three continuos sequences of predicted poses of lengths 4s, 4s, 2s one for each interval in sequence,
+            each starting at corresponding start pose.
+
+    Args:
+        model (nn.Module): Model to unroll the sequence with.
+        states (torch.Tensor): (N, *) Tensor of robot frame states.
+        controls (torch.Tensor): (N, *) Tensor of controls applied at each state.
+        dts (torch.Tensor): (N, *) Tensor of time steps between each two consecutive states.
+        rollout_in_seconds (float): Length of each rollout in seconds.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray, List[np.ndarray]]: Tuple of:
+            - Continuous sequence of true poses for the whole sequence of length N + 1 (first pose will always be 0)
+            - Start poses of each of predicted sequences (see below),
+                corresponding to true poses at times 0s, rollout_in_seconds, 2*rollout_in_seconds, ...
+            - List of predicted sequences, each of length rollout_in_seconds, starting at corresponding start pose.
+    """
+    controls, states, dts = controls.float(), states.float(), dts.float()
+
+    # Controls need to be reshaped to also have batch size
+    controls = controls.view(1, *controls.shape)
+    dts = dts.view(1, *dts.shape)
+
+    # Unroll the true trajectory
+    poses_true = reconstruct_poses_from_odoms(states.numpy(), dts.numpy())
+
+    # Get timestamp relative to the start of the rollout
+    ts = np.cumsum(dts.numpy()) - dts.numpy()[0]
+
+    # Iterate through the rollout in chunks of length ROLLOUT_S (in seconds)
+    idx = 0  # index of the current rollout chunk
+    start_poses = []  # poses at the start of each rollout chunk
+
+    poses_pred_all = []
+
+    while idx * rollout_in_seconds <= ts[-1]:
+        # Get the current rollout chunk
+        cur_idx = np.where(ts // rollout_in_seconds == idx)[0]
+
+        # Get the corresponding dts, controls and states
+        cur_dts = dts[:, cur_idx]
+        cur_controls = controls[:, cur_idx]
+        cur_states = states[cur_idx]
+
+        # Unroll the model predictions for the current rollout chunk
+        predictions = unroll_sequence_torch(
+            model=model,
+            start_state=cur_states[None, 0],
+            controls=cur_controls,
+            dts=cur_dts
+        )
+
+        # Convert to numpy
+        np_predictions = np.array(
+            [pred.detach().cpu().numpy() for pred in predictions]
+        ).squeeze()
+
+        # Convert (dx, dtheta) to (x, y, theta)
+        poses_pred = reconstruct_poses_from_odoms(np_predictions, cur_dts.numpy(), start_pose=poses_true[cur_idx[0]])
+
+        # Save the start pose for this chunk
+        start_poses.append(poses_true[cur_idx[0]])
+
+        poses_pred_all.append(poses_pred)
+        idx += 1
+
+    return poses_true, np.array(start_poses), poses_pred_all
+
+
 def main():
     # "What to do" Parameters
-    TRAIN = True
+    TRAIN = False
     PLOT_VAL = True
 
     # Sequence/Data Parameters
@@ -308,66 +386,21 @@ def main():
             model.eval()
 
             controls, states, targets, dts = val_dataset.longest_rollout
-            controls, states, targets, dts = controls.float(), states.float(), targets.float(), dts.float()
+            poses_true, start_poses, poses_pred_all = get_world_frame_rollouts(model, states, controls, dts, rollout_in_seconds=ROLLOUT_S)
 
-            # Controls need to be reshaped to also have batch size
-            controls = controls.view(1, *controls.shape)
-            dts = dts.view(1, *dts.shape)
-
-            # Unroll the true trajectory
-            poses_true = reconstruct_from_odoms(states.numpy(), dts.numpy())
-
-            # Get timestamp relative to the start of the rollout
-            ts = np.cumsum(dts.numpy()) - dts.numpy()[0]
-
-            # Iterate through the rollout in chunks of length ROLLOUT_S (in seconds)
-            idx = 0  # index of the current rollout chunk
-            start_poses = []  # poses at the start of each rollout chunk
-
-            while idx * ROLLOUT_S <= ts[-1]:
-                # Get the current rollout chunk
-                cur_idx = np.where(ts // ROLLOUT_S == idx)[0]
-
-                # Get the corresponding dts, controls and states
-                cur_dts = dts[:, cur_idx]
-                cur_controls = controls[:, cur_idx]
-                cur_states = states[cur_idx]
-
-                # Unroll the model predictions for the current rollout chunk
-                predictions = unroll_sequence_torch(
-                    model=model,
-                    start_state=cur_states[None, 0],
-                    controls=cur_controls,
-                    dts=cur_dts
-                )
-
-                # Convert to numpy
-                np_predictions = np.array(
-                    [pred.detach().cpu().numpy() for pred in predictions]
-                ).squeeze()
-
-                # Convert (dx, dtheta) to (x, y, theta)
-                poses_pred = reconstruct_from_odoms(np_predictions, cur_dts.numpy(), start_pose=poses_true[cur_idx[0]])
-                poses_pred = np.vstack((poses_true[None, cur_idx[0]], poses_pred))  # Add start pose to the beginning of the sequence
-
-                # Save the start pose for this chunk
-                start_poses.append(poses_true[cur_idx[0]])
-
-                # Plot the (x, y) poses
+            plt.scatter(start_poses[:, 0], start_poses[:, 1], color="red", marker="X")
+            plt.plot(poses_true[:, 0], poses_true[:, 1], color="red", label="True")
+            for idx, poses_pred in enumerate(poses_pred_all):
                 plt_kwargs = {"color": "black"}
                 if idx == 0:
                     plt_kwargs["label"] = "Predicted"
                 plt.plot(poses_pred[:, 0], poses_pred[:, 1], **plt_kwargs)
 
-                idx += 1
-
-            start_poses = np.array(start_poses)
-            plt.scatter(start_poses[:, 0], start_poses[:, 1], color="red", marker="X")
-
-            plt.plot(poses_true[:, 0], poses_true[:, 1], color="red", label="True")
             plt.legend()
             plt.xlabel("x")
             plt.ylabel("y")
+            if not os.path.exists("plots"):
+                os.makedirs("plots")
             plt.savefig(f"plots/sequence_model_val_{settings_suffix}.png", bbox_inches="tight")
             plt.show()
 
