@@ -23,7 +23,7 @@ class SequenceLookaheadDataset(Dataset):
         self.__delay_steps = delay_steps
         self.__sequence_length = sequence_length
 
-        self.processed_sequences, self.__sequence_lengths, self.__max_len_rollout_idx = self.__class__.__parse_sequences(
+        self.processed_sequences, self.__sequence_lengths, self.__max_len_rollout_idx, self.__max_len_rollout = self.__class__.__parse_sequences(
             sequences,
             features=features,
             delayed_features=delayed_features,
@@ -38,7 +38,7 @@ class SequenceLookaheadDataset(Dataset):
     def __len__(self) -> int:
         return self.__total_len
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, ...]:
+    def __get_sequence_of_length(self, index: int, sequence_length: int) -> Tuple[np.ndarray, np.ndarray]:
         sequence_idx = bisect_right(self.__sequence_start_idxs, index) - 1
         rollout_idx = index - self.__sequence_start_idxs[sequence_idx]
 
@@ -48,20 +48,24 @@ class SequenceLookaheadDataset(Dataset):
         result = []
         for f in self.__features:
             result.append(
-                self.processed_sequences[sequence_idx][offset_idx][f][start_idx:start_idx + self.__sequence_length]
+                self.processed_sequences[sequence_idx][offset_idx][f][start_idx:start_idx + sequence_length]
             )
         for f in self.__delayed_features:
             result.append(
-                self.processed_sequences[sequence_idx][offset_idx][f"{f}_delayed"][start_idx:start_idx + self.__sequence_length]
+                self.processed_sequences[sequence_idx][offset_idx][f"{f}_delayed"][start_idx:start_idx + sequence_length]
             )
         result.append(
-            self.processed_sequences[sequence_idx][offset_idx]["time"][start_idx:start_idx + self.__sequence_length]
+            self.processed_sequences[sequence_idx][offset_idx]["time"][start_idx:start_idx + sequence_length]
         )
         return tuple(result)
 
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, ...]:
+        return self.__get_sequence_of_length(index, self.__sequence_length)
+
+
     @property
     def longest_rollout(self) -> Tuple[torch.Tensor, ...]:
-        return self.__getitem__(self.__sequence_start_idxs[self.__max_len_rollout_idx])
+        return self.__get_sequence_of_length(self.__sequence_start_idxs[self.__max_len_rollout_idx], self.__max_len_rollout)
 
     @staticmethod
     def __parse_sequences(sequences: RawSequences, features: List[str], delayed_features: List[str], delay_steps: int, sequence_length: int, *args, **kwargs):
@@ -72,7 +76,9 @@ class SequenceLookaheadDataset(Dataset):
 
         required_features = set(features) | set(delayed_features)
 
-        for seq_idx, seq in enumerate(sequences):
+        seq_idx = 0
+
+        for seq in sequences:
             if not required_features.issubset(seq.keys()):
                 # Sequence does not contain all required features
                 continue
@@ -125,4 +131,7 @@ class SequenceLookaheadDataset(Dataset):
                 max_len_rollout = len(cur_seq[0]["time"])
                 max_len_rollout_idx = seq_idx
 
-        return processed_sequences, sequence_lengths, max_len_rollout_idx
+            # Only update seq_idx if we have a valid sequence
+            seq_idx += 1
+
+        return processed_sequences, sequence_lengths, max_len_rollout_idx, max_len_rollout
