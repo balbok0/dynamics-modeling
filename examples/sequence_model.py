@@ -43,7 +43,7 @@ class ModelBaseline(nn.Module):
     def __init__(self) -> None:
         super().__init__()
     def forward(self, control: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
-        return state
+        return torch.zeros_like(state)
 
 
 def unroll_sequence_torch(
@@ -140,7 +140,7 @@ def train(
                         dts=dts
                     )
                     baseline_rollout_losses = []
-                    for rollout_idx, (pred, target) in enumerate(zip(predictions, targets.transpose(0, 1))):
+                    for rollout_idx, (pred, target) in enumerate(zip(baseline_predictions, targets.transpose(0, 1))):
                         loss = criterion(pred, target)
                         baseline_rollout_losses.append(loss)
                         # running_baseline_loss_rollout_steps[rollout_idx] += loss.detach().cpu().item()
@@ -155,9 +155,9 @@ def train(
         train_loss = running_total_loss / len(train_loader)
         train_baseline_loss = running_baseline_loss / len(train_loader)
         if writer is not None:
-            writer.add_scalar("Loss/train", train_loss, epoch)
+            writer.add_scalar("Loss/train total", train_loss, epoch)
             if model_baseline is not None:
-                writer.add_scalar("Loss/train baseline", train_baseline_loss, epoch)
+                writer.add_scalar("Loss/train total baseline", train_baseline_loss, epoch)
             for rollout_idx, rollout_loss in running_loss_rollout_steps.items():
                 writer.add_scalar(f"Loss/train @ rollout step {rollout_idx}", rollout_loss / len(train_loader), epoch)
         desc = f"Epochs Train Loss {train_loss:.4g} Baseline {train_baseline_loss:.4g}"
@@ -199,7 +199,7 @@ def train(
                             dts=dts
                         )
                         baseline_rollout_losses = []
-                        for rollout_idx, (pred, target) in enumerate(zip(predictions, targets.transpose(0, 1))):
+                        for rollout_idx, (pred, target) in enumerate(zip(baseline_predictions, targets.transpose(0, 1))):
                             loss = criterion(pred, target)
                             baseline_rollout_losses.append(loss)
                             # running_baseline_loss_rollout_steps[rollout_idx] += loss.detach().cpu().item()
@@ -212,9 +212,9 @@ def train(
                 val_loss = running_loss / len(val_loader)
                 val_baseline_loss = running_baseline_loss / len(val_loader)
                 if writer is not None:
-                    writer.add_scalar("Loss/val", val_loss, epoch)
+                    writer.add_scalar("Loss/val total", val_loss, epoch)
                     if model_baseline is not None:
-                        writer.add_scalar("Loss/val baseline", val_baseline_loss, epoch)
+                        writer.add_scalar("Loss/val total baseline", val_baseline_loss, epoch)
                     for rollout_idx, rollout_loss in running_loss_rollout_steps.items():
                         writer.add_scalar(f"Loss/val @ rollout step {rollout_idx}", rollout_loss / len(val_loader), epoch)
                 desc += f" Val Loss {val_loss:.4g} Baseline {val_baseline_loss:.4g}"
@@ -300,7 +300,7 @@ def get_world_frame_rollouts(model: nn.Module, states: torch.Tensor, controls: t
 
 def main():
     # "What to do" Parameters
-    TRAIN = False
+    TRAIN = True
     PLOT_VAL = True
 
     # Sequence/Data Parameters
@@ -368,6 +368,7 @@ def main():
             model=model,
             optimizer=optimizer,
             train_loader=DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True),
+            model_baseline=ModelBaseline(),
             criterion=criterion,
             epochs=EPOCHS,
             val_loader=DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=True),
