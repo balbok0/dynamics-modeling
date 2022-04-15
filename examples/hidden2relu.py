@@ -18,9 +18,8 @@ def train(
     epochs: int,
     val_loader: Optional[DataLoader] = None,
     verbose: bool = True,
+    writer: Optional[SummaryWriter] = None,
 ):
-    writer = SummaryWriter()
-
     trange_epochs = trange(epochs, desc="Epochs", disable=not verbose, leave=True)
     for epoch in trange_epochs:
         running_loss = 0.0
@@ -40,8 +39,9 @@ def train(
 
         train_loss = running_loss / len(train_loader)
         train_baseline_loss = running_baseline_loss / len(train_loader)
-        writer.add_scalar("Loss/train", train_loss, epoch)
-        writer.add_scalar("Loss/train baseline (zero acc.)", train_baseline_loss, epoch)
+        if writer is not None:
+            writer.add_scalar("Loss/train", train_loss, epoch)
+            writer.add_scalar("Loss/train baseline (zero acc.)", train_baseline_loss, epoch)
         desc = f"Epochs Train Loss {train_loss:.4g} (0 acc.) Loss {train_baseline_loss:.4g}"
 
         if val_loader is not None:
@@ -59,8 +59,9 @@ def train(
 
             val_loss = val_running_loss / len(val_loader)
             val_baseline_loss = val_running_baseline_loss / len(val_loader)
-            writer.add_scalar("Loss/val", val_loss, epoch)
-            writer.add_scalar("Loss/val baseline (zero acc.)", val_baseline_loss, epoch)
+            if writer is not None:
+                writer.add_scalar("Loss/val", val_loss, epoch)
+                writer.add_scalar("Loss/val baseline (zero acc.)", val_baseline_loss, epoch)
             desc += f" Val Loss {val_loss:.4g} (0 acc.) Loss {val_baseline_loss:.4g}"
 
         trange_epochs.set_description(desc)
@@ -69,7 +70,7 @@ def train(
 def main():
     DELAY_STEPS = 15
     EPOCHS = 50
-    TRAIN = False
+    TRAIN = True
     PLOT_VAL = True
     PLOT_LEN_ROLLOUT = 10  # seconds
 

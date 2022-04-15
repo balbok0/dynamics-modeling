@@ -82,10 +82,16 @@ def reconstruct_from_odoms(d_odom: np.ndarray, dt: np.ndarray, start_pose: Optio
         delay_steps (int, optional): Number of steps taken for each prediction. Defaults to 1.
 
     Returns:
-        np.ndarray: An (n, 3) array of poses. (x, y, theta)
+        np.ndarray: An (n, 3) array of poses. Columns correspond to (x, y, theta)
     """
-    assert len(d_odom.shape) == 2 and d_odom.shape[1] in {2, 3}, "d_odom must be a 2D array with 2 (dx, dtheta) or 3 (dx, dy, dtheta) columns"
+    assert len(d_odom.shape) == 2 and d_odom.shape[1] in {2, 3}, f"d_odom must be a 2D array with 2 (dx, dtheta) or 3 (dx, dy, dtheta) columns. Instead it is of shape {d_odom.shape}"
     assert delay_steps >= 1, "Delay steps must be at least 1"
+
+    # If d_odom has 2 columns add a column of zeros in the middle (for dy)
+    if d_odom.shape[1] == 2:
+        tmp = np.zeros((len(d_odom), 3))
+        tmp[:, [0, 2]] = d_odom
+        d_odom = tmp
 
     # We expect dt to be a 1D array. It may be a (n, 1) array, in which case we'll reshape it to (n,).
     dt = dt.squeeze()
