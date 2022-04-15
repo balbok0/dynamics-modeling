@@ -16,3 +16,5 @@ dependencies:
     # Tensorboard
     - tensorboard
     - torch-tb-profiler
+    # This is needed for script cleaning up tensorboard runs
+    - tensorflow
