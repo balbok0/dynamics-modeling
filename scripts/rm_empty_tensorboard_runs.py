@@ -23,8 +23,12 @@ def filter_tf_warnings():
 
 def my_summary_iterator(path):
     with filter_tf_warnings():
-        for r in tf_record.tf_record_iterator(path):
-            yield event_pb2.Event.FromString(r)
+        try:
+            for r in tf_record.tf_record_iterator(path):
+                yield event_pb2.Event.FromString(r)
+        except:
+            # This means that there was a Ctrl+C during the write.
+            return [0]
 
 def main():
     parser = argparse.ArgumentParser(
