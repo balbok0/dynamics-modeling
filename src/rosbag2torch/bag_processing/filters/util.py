@@ -1,7 +1,8 @@
 from collections import defaultdict
-from email.policy import default
 from typing import DefaultDict, Dict, List, Set
+
 from .abstract_filter import AbstractFilter
+
 
 def get_filters_topics(
     filters: List[AbstractFilter],
@@ -24,7 +25,9 @@ def get_filters_topics(
                     result[topic].append(filter_)
                 break
             raise ValueError(
-                "Filter {} has no set of topics that it can use in the bag.".format(filter_.__class__.__name__)
+                "Filter {} has no set of topics that it can use in the bag.".format(
+                    filter_.__class__.__name__
+                )
             )
 
     return result

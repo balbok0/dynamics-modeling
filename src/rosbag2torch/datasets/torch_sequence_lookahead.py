@@ -1,5 +1,5 @@
-from typing import Dict, List, Optional, Tuple, Union
 from bisect import bisect_right
+from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 
 RawSequence = Dict[str, np.ndarray]
 RawSequences = List[RawSequence]
+
 
 class SequenceLookaheadDataset(Dataset):
     def __init__(
@@ -23,7 +24,12 @@ class SequenceLookaheadDataset(Dataset):
         self.__delay_steps = delay_steps
         self.__sequence_length = sequence_length
 
-        self.processed_sequences, self.__sequence_lengths, self.__max_len_rollout_idx, self.__max_len_rollout = self.__class__.__parse_sequences(
+        (
+            self.processed_sequences,
+            self.__sequence_lengths,
+            self.__max_len_rollout_idx,
+            self.__max_len_rollout,
+        ) = self.__class__.__parse_sequences(
             sequences,
             features=features,
             delayed_features=delayed_features,
@@ -38,37 +44,55 @@ class SequenceLookaheadDataset(Dataset):
     def __len__(self) -> int:
         return self.__total_len
 
-    def __get_sequence_of_length(self, index: int, sequence_length: int) -> Tuple[np.ndarray, np.ndarray]:
-        sequence_idx = bisect_right(self.__sequence_start_idxs, index) - 1
+    def __get_sequence_of_length(
+        self, index: int, sequence_length: int
+    ) -> Tuple[torch.Tensor, ...]:
+        sequence_idx = bisect_right(self.__sequence_start_idxs, index) - 1  # type: ignore
         rollout_idx = index - self.__sequence_start_idxs[sequence_idx]
 
         offset_idx = rollout_idx % self.__delay_steps
         start_idx = rollout_idx // self.__delay_steps
 
-        result = []
+        result: List[torch.Tensor] = []
         for f in self.__features:
             result.append(
-                self.processed_sequences[sequence_idx][offset_idx][f][start_idx:start_idx + sequence_length]
+                self.processed_sequences[sequence_idx][offset_idx][f][
+                    start_idx : start_idx + sequence_length
+                ]
             )
         for f in self.__delayed_features:
             result.append(
-                self.processed_sequences[sequence_idx][offset_idx][f"{f}_delayed"][start_idx:start_idx + sequence_length]
+                self.processed_sequences[sequence_idx][offset_idx][f"{f}_delayed"][
+                    start_idx : start_idx + sequence_length
+                ]
             )
         result.append(
-            self.processed_sequences[sequence_idx][offset_idx]["time"][start_idx:start_idx + sequence_length]
+            self.processed_sequences[sequence_idx][offset_idx]["time"][
+                start_idx : start_idx + sequence_length
+            ]
         )
         return tuple(result)
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, ...]:
         return self.__get_sequence_of_length(index, self.__sequence_length)
 
-
     @property
     def longest_rollout(self) -> Tuple[torch.Tensor, ...]:
-        return self.__get_sequence_of_length(self.__sequence_start_idxs[self.__max_len_rollout_idx], self.__max_len_rollout)
+        return self.__get_sequence_of_length(
+            self.__sequence_start_idxs[self.__max_len_rollout_idx],
+            self.__max_len_rollout,
+        )
 
     @staticmethod
-    def __parse_sequences(sequences: RawSequences, features: List[str], delayed_features: List[str], delay_steps: int, sequence_length: int, *args, **kwargs):
+    def __parse_sequences(
+        sequences: RawSequences,
+        features: List[str],
+        delayed_features: List[str],
+        delay_steps: int,
+        sequence_length: int,
+        *args,
+        **kwargs,
+    ):
         processed_sequences: List[Dict[int, Dict[str, torch.Tensor]]] = []
         sequence_lengths: List[int] = []
         max_len_rollout = 0
@@ -90,13 +114,17 @@ class SequenceLookaheadDataset(Dataset):
                 cur_seq_flat[f] = torch.from_numpy(seq[f][:-delay_steps])
             for f in delayed_features:
                 cur_seq_flat[f"{f}_delayed"] = torch.from_numpy(seq[f][delay_steps:])
-            cur_seq_flat["time"] = torch.from_numpy(seq["time"][delay_steps:] - seq["time"][:-delay_steps])
+            cur_seq_flat["time"] = torch.from_numpy(
+                seq["time"][delay_steps:] - seq["time"][:-delay_steps]
+            )
 
             # Calculate the number of sequences that can be read
             # In each step we are taking delay_steps steps forward (to get next element of the rollout)
             # for sequence_length steps
             # One rollout will be (sequence_length - 1) * delay_steps long
-            num_rollouts = len(cur_seq_flat["time"]) - (sequence_length - 1) * delay_steps
+            num_rollouts = (
+                len(cur_seq_flat["time"]) - (sequence_length - 1) * delay_steps
+            )
             # Example: if we have sequence_length=3, delay_steps=2 and a sequence of length 10,
             # we can read sequences:
             # - [0, 2, 4]
@@ -114,7 +142,7 @@ class SequenceLookaheadDataset(Dataset):
             # defined by their starting index.
             # - [0, 2, 4, 6, 8]
             # - [1, 3, 5, 7, 9]
-            cur_seq = {}
+            cur_seq: Dict[int, Dict[str, torch.Tensor]] = {}
             for start_idx in range(min(delay_steps, num_rollouts)):
                 cur_seq[start_idx] = {}
                 for f, val in cur_seq_flat.items():
@@ -134,4 +162,9 @@ class SequenceLookaheadDataset(Dataset):
             # Only update seq_idx if we have a valid sequence
             seq_idx += 1
 
-        return processed_sequences, sequence_lengths, max_len_rollout_idx, max_len_rollout
+        return (
+            processed_sequences,
+            sequence_lengths,
+            max_len_rollout_idx,
+            max_len_rollout,
+        )

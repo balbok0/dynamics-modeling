@@ -1,9 +1,10 @@
 from typing import List, Tuple
+
 import numpy as np
 import rospy
-from .abstract_transform import AbstractTransform
 from nav_msgs.msg import Odometry
-import scipy.spatial.transform as trf
+
+from .abstract_transform import AbstractTransform
 
 
 class GroundTruthTransform(AbstractTransform):

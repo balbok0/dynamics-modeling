@@ -1,20 +1,25 @@
-from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 import rospy
-from ..msg_stubs import VehicleInput, AutomaticGearDirectionDict
+
+from ..msg_stubs import AutomaticGearDirectionDict, VehicleInput
 from .abstract_transform import AbstractTransform
+
 
 class InputTransform(AbstractTransform):
     topics = ["/{robot_name}/input"]
     feature = "control"
 
-    THRESHOLD_NEW_SEQUENCE = 0.15  # seconds. Time after which a new sequence is started.
+    THRESHOLD_NEW_SEQUENCE = (
+        0.15  # seconds. Time after which a new sequence is started.
+    )
 
     def __init__(self, features):
         super().__init__(features)
-        self.required_features_set = set(self.required_features)  # This is to speed up check in the beggining of callback. It will run often
+        self.required_features_set = set(
+            self.required_features
+        )  # This is to speed up check in the beggining of callback. It will run often
 
         self.end_bag()
 
@@ -25,7 +30,7 @@ class InputTransform(AbstractTransform):
         current_state: Dict[str, np.ndarray],
         *args,
         **kwargs,
-    ) -> bool:
+    ):
         state = [
             msg.steer * AutomaticGearDirectionDict[msg.automatic_gear],
             msg.throttle * AutomaticGearDirectionDict[msg.automatic_gear],

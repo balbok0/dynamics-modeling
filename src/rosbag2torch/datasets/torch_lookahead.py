@@ -1,9 +1,9 @@
-from typing import Dict, List, Optional, Tuple, Union
-import warnings
+from typing import Dict, List, Tuple
+
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torch import nn
+
 
 class LookaheadDataset(Dataset):
     name = "torch_lookahead"
@@ -17,7 +17,9 @@ class LookaheadDataset(Dataset):
     ) -> None:
         super().__init__()
 
-        x, y, t = self.__class__._rollout_sequences(seqs, x_features, y_features, delay_steps)
+        x, y, t = self.__class__._rollout_sequences(
+            seqs, x_features, y_features, delay_steps
+        )
 
         # Data for training
         self.x = torch.from_numpy(x)
@@ -27,12 +29,8 @@ class LookaheadDataset(Dataset):
         # Data for visualization
         # Take only first sequence
         seq = seqs[0]
-        self.first_seq_x = np.concatenate([
-            seq[f] for f in x_features
-        ], axis=1)
-        self.first_seq_y = np.concatenate([
-            seq[f] for f in y_features
-        ], axis=1)
+        self.first_seq_x = np.concatenate([seq[f] for f in x_features], axis=1)
+        self.first_seq_y = np.concatenate([seq[f] for f in y_features], axis=1)
         if "time" in seq:
             self.first_seq_t = seq["time"]
         else:
@@ -43,7 +41,9 @@ class LookaheadDataset(Dataset):
     def __len__(self) -> int:
         return len(self.x)
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(
+        self, index: int
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return self.x[index], self.y[index], self.t[index]
 
     @staticmethod
@@ -52,7 +52,7 @@ class LookaheadDataset(Dataset):
         x_features: List[str],
         y_features: List[str],
         delay_steps: int,
-        remove_duplicates: bool = False
+        remove_duplicates: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         # Pre-allocate arrays, get indexes of corresponding features
         seqs_len = 0
@@ -76,12 +76,8 @@ class LookaheadDataset(Dataset):
             if s_len <= 0:
                 # Sequence too short to process
                 continue
-            x_s = np.concatenate([
-                s[f][:s_len] for f in x_features
-            ], axis=1)
-            y_s = np.concatenate([
-                s[f][-s_len:] for f in y_features
-            ], axis=1)
+            x_s = np.concatenate([s[f][:s_len] for f in x_features], axis=1)
+            y_s = np.concatenate([s[f][-s_len:] for f in y_features], axis=1)
 
             if "time" in s:
                 t_s = s["time"][delay_steps:] - s["time"][:-delay_steps]
@@ -108,9 +104,9 @@ class LookaheadDataset(Dataset):
                     y_seqs = np.zeros((seqs_len, y_s.shape[1]), dtype=np.float32)
 
                 # Append to result
-                x_seqs[seqs_so_far:seqs_so_far + s_len] = x_s
-                y_seqs[seqs_so_far:seqs_so_far + s_len] = y_s
-                t_seqs[seqs_so_far:seqs_so_far + s_len] = t_s
+                x_seqs[seqs_so_far : seqs_so_far + s_len] = x_s
+                y_seqs[seqs_so_far : seqs_so_far + s_len] = y_s
+                t_seqs[seqs_so_far : seqs_so_far + s_len] = t_s
                 seqs_so_far += s_len
 
         if remove_duplicates:

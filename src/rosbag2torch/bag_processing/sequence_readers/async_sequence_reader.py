@@ -1,22 +1,29 @@
-from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-import numpy as np
-from tqdm import tqdm
+from typing import List, Union
 
-from .abstract_sequence_reader import AbstractSequenceReader, Sequence, Sequences
-from ..transforms import get_topics_and_transforms
+import numpy as np
+
 from ..filters import AbstractFilter
+from .abstract_sequence_reader import AbstractSequenceReader, Sequence, Sequences
 
 
 class ASyncSequenceReader(AbstractSequenceReader):
-    def __init__(self, required_keys: List[str], features_to_record_on: List[str], filters: List[AbstractFilter] = [],  *args, **kwargs) -> None:
+    def __init__(
+        self,
+        required_keys: List[str],
+        features_to_record_on: List[str],
+        filters: List[AbstractFilter] = [],
+        *args,
+        **kwargs
+    ) -> None:
         super().__init__(required_keys, filters, *args, **kwargs)
 
         if isinstance(features_to_record_on, str):
             features_to_record_on = [features_to_record_on]
 
-        assert len(features_to_record_on) > 0, "features_to_record_on must be a non-empty list"
+        assert (
+            len(features_to_record_on) > 0
+        ), "features_to_record_on must be a non-empty list"
         assert set(features_to_record_on).issubset(set(required_keys))
 
         self._sequences: Sequences = []
@@ -42,13 +49,9 @@ class ASyncSequenceReader(AbstractSequenceReader):
             # Traverse sequentially through timestamps to be logged on
             # Ensure that all of the required keys are present at the time of logging
             # and if so log the state at the time
-            last_used_idx = {
-                feature_name: -1
-                for feature_name in self.required_keys
-            }
+            last_used_idx = {feature_name: -1 for feature_name in self.required_keys}
             sequence: Sequence = {
-                feature_name: []
-                for feature_name in self.required_keys + ["time"]
+                feature_name: [] for feature_name in self.required_keys + ["time"]
             }
             for ts in ts_to_record_on:
                 # For each feature get the latest index that is less than or equal to the current timestamp
@@ -65,7 +68,9 @@ class ASyncSequenceReader(AbstractSequenceReader):
 
                 # Add current state to the sequence
                 for feature in self.required_keys:
-                    sequence[feature].append(raw_sequence[feature][0][last_used_idx[feature]])
+                    sequence[feature].append(
+                        raw_sequence[feature][0][last_used_idx[feature]]
+                    )
 
                 # Lastly add time
                 sequence["time"].append(ts)

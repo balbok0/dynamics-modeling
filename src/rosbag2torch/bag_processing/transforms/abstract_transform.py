@@ -1,12 +1,11 @@
+from abc import ABC, abstractmethod, abstractproperty
+from typing import Dict, List, Tuple
+
 import numpy as np
 import rospy
 
-from abc import abstractmethod, ABC, abstractproperty
-from typing import Dict, List, Optional, Tuple
-
 
 class AbstractTransform(ABC):
-
     @abstractproperty
     def topics(self) -> List[str]:
         """
@@ -32,7 +31,7 @@ class AbstractTransform(ABC):
         self,
         msg,
         ts: rospy.Time,
-        current_state: Dict,
+        current_state: Dict[str, np.ndarray],
         *args,
         **kwargs,
     ):

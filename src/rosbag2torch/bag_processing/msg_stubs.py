@@ -1,4 +1,4 @@
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
@@ -7,8 +7,8 @@ import numpy as np
 
 
 class ManualGear(Enum):
-    MANUAL_REVERSE=-1
-    MANUAL_NEURAL=0
+    MANUAL_REVERSE = -1
+    MANUAL_NEURAL = 0
 
 
 class AutomaticGear(Enum):
@@ -35,10 +35,10 @@ class VehicleInput:
     steer: float  # Steering wheel position in ratio
     throttle: float  # Throttle pedal position in ratio
     brake: float  # Brake pedal position in ratio
-    handbrake: float # Handbrake position in ratio
-    clutch: float # Clutch pedal position in ratio
-    manual_gear: int # Stick position for manual gears: -1 (R), 0 (N), 1, 2, 3... Might be used together with AutomaticGear in Manual (M) mode.
-    automatic_gear: int # Stick position for automatic transmission: 0, 1, 2, 3, 4, 5 = M, P, R, N, D, L
+    handbrake: float  # Handbrake position in ratio
+    clutch: float  # Clutch pedal position in ratio
+    manual_gear: int  # Stick position for manual gears: -1 (R), 0 (N), 1, 2, 3... Might be used together with AutomaticGear in Manual (M) mode.
+    automatic_gear: int  # Stick position for automatic transmission: 0, 1, 2, 3, 4, 5 = M, P, R, N, D, L
 
     def __eq__(self, __o: object) -> bool:
         if not isinstance(__o, VehicleInput):
@@ -74,7 +74,16 @@ class PIDInfo:
     def __eq__(self, __o: object) -> bool:
         if not isinstance(__o, PIDInfo):
             return False
-        fields = ["vel_des", "vel", "error", "integral_error", "control", "polaris_control_mode", "polaris_control_health", "brake_responding"]
+        fields = [
+            "vel_des",
+            "vel",
+            "error",
+            "integral_error",
+            "control",
+            "polaris_control_mode",
+            "polaris_control_health",
+            "brake_responding",
+        ]
         return all([getattr(self, x) == getattr(__o, x) for x in fields])
 
 

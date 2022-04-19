@@ -2,12 +2,22 @@ from pathlib import Path
 from typing import List, Union
 
 import numpy as np
-from .abstract_sequence_reader import AbstractSequenceReader, Sequence, Sequences
-from ..filters import AbstractFilter
 from scipy import interpolate
 
+from ..filters import AbstractFilter
+from .abstract_sequence_reader import AbstractSequenceReader, Sequence, Sequences
+
+
 class FixedIntervalReader(AbstractSequenceReader):
-    def __init__(self, required_keys: List[str], log_interval: float = 0.1, spline_pwr: int = 3, filters: List[AbstractFilter] = ..., *args, **kwargs) -> None:
+    def __init__(
+        self,
+        required_keys: List[str],
+        log_interval: float = 0.1,
+        spline_pwr: int = 3,
+        filters: List[AbstractFilter] = [],
+        *args,
+        **kwargs
+    ) -> None:
         super().__init__(required_keys, filters, *args, **kwargs)
 
         self.log_interval = log_interval
@@ -37,10 +47,12 @@ class FixedIntervalReader(AbstractSequenceReader):
             if is_empty_sequence:
                 break
 
-
             # Goal timestamps (that sequence is actually logged on)
             # Add half of log interval to also include the last message
-            goal_ts = np.arange(min_ts, max_ts + self.log_interval / 2, self.log_interval) - min_ts
+            goal_ts = (
+                np.arange(min_ts, max_ts + self.log_interval / 2, self.log_interval)
+                - min_ts
+            )
 
             cur_sequence: Sequence = {}
 
@@ -51,15 +63,23 @@ class FixedIntervalReader(AbstractSequenceReader):
                 feature_ts -= min_ts
 
                 # NOTE: What are knots used for?
-                knots = np.linspace(feature_ts[0], feature_ts[-1], int(round(feature_ts.size/10.0)))[1:-1]
+                knots = np.linspace(
+                    feature_ts[0], feature_ts[-1], int(round(feature_ts.size / 10.0))
+                )[1:-1]
 
                 # Pre-allocate array
-                processed_feature_sequence = np.zeros((len(goal_ts), feature_data.shape[1]))
+                processed_feature_sequence = np.zeros(
+                    (len(goal_ts), feature_data.shape[1])
+                )
 
                 # For each column get spline params and interpolate back onto the fixed cadence goal timestamps
                 for col_idx in range(feature_data.shape[1]):
-                    spline_params = interpolate.splrep(feature_ts, feature_data[:, col_idx], k=self.spline_pwr, t=knots)
-                    processed_feature_sequence[:, col_idx] = interpolate.splev(goal_ts, spline_params)
+                    spline_params = interpolate.splrep(
+                        feature_ts, feature_data[:, col_idx], k=self.spline_pwr, t=knots
+                    )
+                    processed_feature_sequence[:, col_idx] = interpolate.splev(
+                        goal_ts, spline_params
+                    )
 
                 cur_sequence[feature_name] = processed_feature_sequence
 

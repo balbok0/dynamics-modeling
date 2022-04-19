@@ -15,13 +15,12 @@ from . import (
     input_transform,
     autorally_ground_truth,
     autorally_state,
-    odom_transform
+    odom_transform,
 )
 
+
 def get_topics_and_transforms(
-    features: List[str],
-    bag_topics: Set[str],
-    format_map: Dict[str, str]
+    features: List[str], bag_topics: Set[str], format_map: Dict[str, str]
 ) -> Dict[str, List[AbstractTransform]]:
     result = defaultdict(list)
     features_to_find = set(features)
@@ -34,12 +33,12 @@ def get_topics_and_transforms(
         autorally_ground_truth,
         autorally_state,
     ]:
-        for obj in dir(callback_module):
+        for obj_str in dir(callback_module):
             # Faster filter for built-in tools and the abstract class
-            if obj.startswith("__") or obj == "AbstractTransform":
+            if obj_str.startswith("__") or obj_str == "AbstractTransform":
                 continue
 
-            obj = getattr(callback_module, obj)
+            obj = getattr(callback_module, obj_str)
             if isclass(obj) and issubclass(obj, AbstractTransform):
                 # Check if it feature matches any of the requested features
                 if obj.feature in features_to_find:
@@ -54,4 +53,3 @@ def get_topics_and_transforms(
                             features_to_find.discard(obj.feature)
                             break
     return result
-
