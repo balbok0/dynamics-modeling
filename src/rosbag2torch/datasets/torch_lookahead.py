@@ -1,117 +1,107 @@
+from bisect import bisect_right
 from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from .__defs import RawSequences
+
 
 class LookaheadDataset(Dataset):
-    name = "torch_lookahead"
-
     def __init__(
         self,
         seqs: List[Dict[str, np.ndarray]],
-        x_features: List[str],
-        y_features: List[str],
+        features: List[str],
+        delayed_features: List[str],
         delay_steps: int = 1,
     ) -> None:
         super().__init__()
 
-        x, y, t = self.__class__._rollout_sequences(
-            seqs, x_features, y_features, delay_steps
+        self.processed_sequences, sequences_lengths = self.__parse_sequences(
+            seqs, features, delayed_features, delay_steps
         )
 
-        # Data for training
-        self.x = torch.from_numpy(x)
-        self.y = torch.from_numpy(y)
-        self.t = torch.from_numpy(t)
+        self.__features = features
+        self.__delayed_features = delayed_features
 
-        # Data for visualization
-        # Take only first sequence
-        seq = seqs[0]
-        self.first_seq_x = np.concatenate([seq[f] for f in x_features], axis=1)
-        self.first_seq_y = np.concatenate([seq[f] for f in y_features], axis=1)
-        if "time" in seq:
-            self.first_seq_t = seq["time"]
-        else:
-            self.first_seq_t = np.ones_like(self.first_seq_x)
+        self.__longest_sequence_idx = np.argmax(sequences_lengths)
+        self.__longest_sequence_length = sequences_lengths[self.__longest_sequence_idx]
+        self.__total_len = sum(sequences_lengths)
 
-        self.delay_steps = delay_steps
+        self.__sequence_start_idxs = np.cumsum(sequences_lengths) - sequences_lengths[0]
+
+        self.__delay_steps = delay_steps
 
     def __len__(self) -> int:
-        return len(self.x)
+        return self.__total_len
 
-    def __getitem__(
-        self, index: int
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        return self.x[index], self.y[index], self.t[index]
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, ...]:
+        sequence_idx = bisect_right(self.__sequence_start_idxs, index) - 1
+        item_idx = index - self.__sequence_start_idxs[sequence_idx]
+
+        result = []
+        for f in self.__features:
+            result.append(self.processed_sequences[sequence_idx][f][item_idx])
+        for f in self.__delayed_features:
+            result.append(
+                self.processed_sequences[sequence_idx][f"{f}_delayed"][item_idx]
+            )
+        result.append(self.processed_sequences[sequence_idx]["time"][item_idx])
+        return tuple(result)
+
+    @property
+    def longest_rollout(self) -> Tuple[torch.Tensor, ...]:
+        start_idx = self.__sequence_start_idxs[self.__longest_sequence_idx]
+        end_idx = start_idx + self.__longest_sequence_length
+        feature_lists = None
+        for idx in range(start_idx, end_idx, self.__delay_steps):
+            features = self[idx]
+            if feature_lists is None:
+                feature_lists = [[f_tensor] for f_tensor in features]
+            else:
+                for f_idx, f_tensor in enumerate(features):
+                    feature_lists[f_idx].append(f_tensor)
+
+        if feature_lists is None:
+            return tuple()
+
+        return tuple(torch.tensor(f_list) for f_list in feature_lists)
 
     @staticmethod
-    def _rollout_sequences(
-        seqs: List[Dict[str, np.ndarray]],
-        x_features: List[str],
-        y_features: List[str],
+    def __parse_sequences(
+        sequences: RawSequences,
+        features: List[str],
+        delayed_features: List[str],
         delay_steps: int,
-        remove_duplicates: bool = False,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        # Pre-allocate arrays, get indexes of corresponding features
-        seqs_len = 0
-        for s in seqs:
-            seqs_len += max(0, len(s[x_features[0]]) - delay_steps)
+        *args,
+        **kwargs,
+    ):
+        processed_sequences: List[Dict[str, torch.Tensor]] = []
+        sequence_lengths: List[int] = []
 
-        if remove_duplicates:
-            x_seqs = []
-            y_seqs = []
-            t_seqs = []
-        else:
-            x_seqs = None
-            y_seqs = None
-            t_seqs = np.zeros((seqs_len, 1), dtype=np.float32)
+        required_features = set(features) | set(delayed_features)
 
-        # Process data
-        seqs_so_far = 0
-        for s in seqs:
-            # Get data for sequence
-            s_len = len(s[x_features[0]]) - delay_steps
-            if s_len <= 0:
-                # Sequence too short to process
+        for seq in sequences:
+            if not required_features.issubset(seq.keys()):
+                # Sequence does not contain all required features
                 continue
-            x_s = np.concatenate([s[f][:s_len] for f in x_features], axis=1)
-            y_s = np.concatenate([s[f][-s_len:] for f in y_features], axis=1)
 
-            if "time" in s:
-                t_s = s["time"][delay_steps:] - s["time"][:-delay_steps]
-                t_s = t_s[:, None]
-            else:
-                t_s = np.ones((s_len, 1))
+            cur_seq = {}
 
-            if remove_duplicates:
-                # Check for differences being almost 0
-                idxs = np.logical_not(np.all(np.isclose(y_s, 0), axis=1))
+            # Add torch sequences
+            for f in features:
+                cur_seq[f] = torch.from_numpy(seq[f][:-delay_steps])
+            for f in delayed_features:
+                cur_seq[f"{f}_delayed"] = torch.from_numpy(seq[f][delay_steps:])
+            cur_seq["time"] = torch.from_numpy(
+                seq["time"][delay_steps:] - seq["time"][:-delay_steps]
+            )
 
-                y_s = y_s[idxs]
-                t_s = t_s[idxs]
-                x_s = x_s[idxs]
+            processed_sequences.append(cur_seq)
 
-                # Append to result
-                x_seqs.extend(x_s)
-                y_seqs.extend(y_s)
-                t_seqs.extend(t_s)
-            else:
-                # If it's a first sequence define x_seqs and y_seqs with proper shapes
-                if x_seqs is None:
-                    x_seqs = np.zeros((seqs_len, x_s.shape[1]), dtype=np.float32)
-                    y_seqs = np.zeros((seqs_len, y_s.shape[1]), dtype=np.float32)
+            cur_seq_len = len(cur_seq["time"])
 
-                # Append to result
-                x_seqs[seqs_so_far : seqs_so_far + s_len] = x_s
-                y_seqs[seqs_so_far : seqs_so_far + s_len] = y_s
-                t_seqs[seqs_so_far : seqs_so_far + s_len] = t_s
-                seqs_so_far += s_len
+            sequence_lengths.append(cur_seq_len)
 
-        if remove_duplicates:
-            x_seqs = np.array(x_seqs, dtype=np.float32)
-            y_seqs = np.array(y_seqs, dtype=np.float32)
-            t_seqs = np.array(t_seqs, dtype=np.float32)
-
-        return x_seqs, y_seqs, t_seqs
+        return processed_sequences, sequence_lengths

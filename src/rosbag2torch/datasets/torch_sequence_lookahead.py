@@ -5,8 +5,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-RawSequence = Dict[str, np.ndarray]
-RawSequences = List[RawSequence]
+from .__defs import RawSequences
 
 
 class SequenceLookaheadDataset(Dataset):
