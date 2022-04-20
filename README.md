@@ -105,13 +105,16 @@ Lastly the scripts `src/main.py` combines all of these building blocks into one 
 
 
 ## TODOs
-- [ ] Fix other datasets to follow SequenceLookaheadDataset __get_item__ structure.
-- [ ] Invoke tasks for linting and testing(? See below)
+- [ ] Utility to loop over .h5cache files along with bags.
+- [ ] Test & Invoke tasks for testing
+- [ ] Register hook for transforms
+- [ ] Decouple looking up transforms when extracting features in reader.
 - [ ] Move to GitLab
 - [ ] Dask support for arrays bigger than memory? I don't think it will be an issue with dynamics-modeling (unless we do some stuff with elevation map), but it might be useful for other extractions.
 
 ### Old TODOs
 - [x] Make validation/plotting pipeline.
+- [x] Fix other datasets to follow SequenceLookaheadDataset __get_item__ structure.
 - [x] Debug of current differential pose approach, and figuring out sync issues.
 - [x] Verify that robot type argument is even necessary. If it is then make sure it's properly passed into data loading, models etc.
 - [x] Add support for AutoRally style input/output.
