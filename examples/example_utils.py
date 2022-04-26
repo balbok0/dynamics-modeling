@@ -1,3 +1,5 @@
+import torch
+from torch import nn
 import numpy as np
 from typing import Optional
 
@@ -90,3 +92,69 @@ def reconstruct_poses_from_acc(acc: np.ndarray, dt: np.ndarray, start_pose: Opti
     v = disp_v + start_vel
 
     return np.cumsum(dt[..., None] * v, axis=0) + start_pose
+
+
+class StateControlBaseline(nn.Module):
+    def __init__(self, dt: float, min_linear_vel: float, forward_force_multiplier: float):
+        """Baseline model for state-control input.
+
+        Args:
+            dt (float): Difference in time between consecutive poses in a single rollout.
+            min_linear_vel (float): Minimum linear velocity to be considered.
+            forward_force_multiplier (float): Multiplier for the throttle.
+        """
+        super().__init__()
+        self.dt = dt
+        self.min_linear_vel = min_linear_vel
+        # maximum accel attainable through max throttle/break input
+        self.forward_force_multiplier = forward_force_multiplier
+
+    def forward(self, control: torch.Tensor, state: torch.Tensor):
+        linear_vel = state[:, 0]
+        angular_vel = state[:, 1]
+        forward_force = control[:, 0]
+        steering = control[:, 2]
+
+        linear_accel = torch.maximum(
+            forward_force * self.forward_force_multiplier,
+            (-linear_vel + self.min_linear_vel) / self.dt)
+        angular_accel = (steering * linear_vel - angular_vel) / self.dt
+
+        return torch.stack((linear_accel, angular_accel), dim=1)
+
+
+class StateControlTrainableModel(nn.Module):
+    # jit stuff
+    collapse_throttle_brake: torch.jit.Final[bool]
+
+    def __init__(self, activation: nn.Module, hidden_size: int, num_hidden_layers: int, collapse_throttle_brake: bool = False) -> None:
+        super().__init__()
+        assert hidden_size > 0
+        assert num_hidden_layers >= 0
+
+        self.collapse_throttle_brake = bool(collapse_throttle_brake)
+
+        dim_in = 4 if collapse_throttle_brake else 5
+
+        # Edge case: no hidden layers
+        if num_hidden_layers == 0:
+            self._model = nn.Linear(dim_in, 2)
+        else:
+            self._model = nn.Sequential(
+                nn.Linear(dim_in, hidden_size),
+                activation,
+                *[
+                    nn.Sequential(nn.Linear(hidden_size, hidden_size), activation)
+                    for _ in range(num_hidden_layers - 1)
+                ],
+                nn.Linear(hidden_size, 2)
+            )
+
+    def forward(self, control: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
+        # Control is throttle, brake, steer
+        if self.collapse_throttle_brake:
+            control[:, 0] = control[:, 0] - control[:, 1]
+            input_control = torch.cat([control[:, 0, None], control[:, 2, None]], dim=1)
+        else:
+            input_control = control
+        return self._model(torch.cat((input_control, state), dim=1))
