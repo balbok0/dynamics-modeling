@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+from pathlib import Path
 from typing import List, Optional, Tuple
 from collections import defaultdict
 from matplotlib import pyplot as plt
@@ -318,7 +319,7 @@ def main():
     LR = 1e-3
     BATCH_SIZE = 32
 
-    DATASET_TRAIN = "datasets/rzr_sim"
+    DATASET_TRAIN = "datasets/rzr_real"
     DATASET_VAL = "datasets/rzr_real_val"
 
     # Suffix to use for saving this configuration. Shared for tensorboard and models
@@ -353,7 +354,8 @@ def main():
         list(set(features + delayed_features)),
         log_interval=1.0 / log_hz,
         filters=[
-            filters.ForwardFilter()
+            filters.ForwardFilter(),
+            filters.PIDInfoFilter()
         ]
     )
     rollout_len = int(ROLLOUT_S  * log_hz)
@@ -366,7 +368,8 @@ def main():
     )
 
     model_prefix = f"models/sequence_model_{settings_suffix}"
-
+    if not Path(model_prefix).parent.exists():
+        Path(model_prefix).parent.mkdir(parents=True)
 
     if TRAIN:
         model = Model(activation=ACTIVATION_FN, hidden_size=HIDDEN_SIZE, num_hidden_layers=NUM_HIDDEN_LAYERS)
