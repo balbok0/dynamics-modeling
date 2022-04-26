@@ -32,9 +32,9 @@ class InputTransform(AbstractTransform):
         **kwargs,
     ):
         state = [
-            msg.steer * AutomaticGearDirectionDict[msg.automatic_gear],
             msg.throttle * AutomaticGearDirectionDict[msg.automatic_gear],
             msg.brake,
+            msg.steer * AutomaticGearDirectionDict[msg.automatic_gear],
         ]
 
         # Add vehicle input information to the current state.
