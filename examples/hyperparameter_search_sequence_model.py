@@ -13,8 +13,9 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
+import copy
 
-from example_utils import reconstruct_poses_from_odoms, StateControlBaseline, StateControlTrainableModel
+from example_utils import reconstruct_poses_from_odoms, StateControlBaseline, StateControlTrainableModel, augment_sequences_reflect_steer
 from rosbag2torch.bag_processing.sequence_readers.abstract_sequence_reader import Sequences
 
 
@@ -272,7 +273,7 @@ def train(
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
-                    best_state_dict = model.state_dict()
+                    best_state_dict = copy.deepcopy(model.state_dict())
 
         trange_epochs.set_description(desc)
 
@@ -372,6 +373,8 @@ def plot_rollout(model, dataset, rollout_s):
     image_from_plot = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
     image_from_plot = image_from_plot.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 
+    plt.close(fig)
+
     return image_from_plot
 
 
@@ -408,6 +411,10 @@ def main():
     # Train sequences
     fixed_interval_sequences = load_bags(DATASET_TRAIN, fixed_interval_reader)
     async_sequences = load_bags(DATASET_TRAIN, async_reader)
+
+    # Augment train sequences
+    fixed_interval_sequences = augment_sequences_reflect_steer(fixed_interval_sequences)
+    async_sequences = augment_sequences_reflect_steer(async_sequences)
 
     # Validation Sequences
     val_sequences = load_bags(DATASET_VAL, async_reader)

@@ -1,8 +1,10 @@
+import copy
 import torch
 from torch import nn
 import numpy as np
-from typing import Optional
-
+from typing import Optional, Tuple, Union
+from torch.utils.data import Dataset
+from rosbag2torch.bag_processing.sequence_readers.abstract_sequence_reader import Sequences
 
 def reconstruct_poses_from_odoms(d_odom: np.ndarray, dt: np.ndarray, start_pose: Optional[np.ndarray] = None):
     """This function reconstructs the trajectory from odometry data.
@@ -158,3 +160,18 @@ class StateControlTrainableModel(nn.Module):
         else:
             input_control = control
         return self._model(torch.cat((input_control, state), dim=1))
+
+
+def augment_sequences_reflect_steer(sequences: Sequences) -> Dataset:
+    """Augment sequences by reflecting the steering angle."""
+    num_sequences = len(sequences)  # Append to sequences in-place. We want to only iterate over the original sequences.
+    for i in range(num_sequences):
+        sequence = {}
+        for feature_name, feature_vals in sequences[i].items():
+            if feature_name in {"state", "target", "control"}:
+                feature_vals[..., -1] *= -1
+            sequence[feature_name] = feature_vals
+
+        sequences.append(sequence)
+
+    return sequences
