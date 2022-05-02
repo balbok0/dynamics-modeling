@@ -13,9 +13,9 @@ class AutorallyState(AbstractTransform):
     topics = [{"/{robot_name}/odom"}]
     feature = "autorally-state"
 
-    def __init__(self, features: List[str], use_quarterions: bool = True):
+    def __init__(self, use_quarterions: bool = True):
         """State based on Autorally project."""
-        super().__init__(features)
+        super().__init__()
 
         self.previous_pose = None
         self.use_quarterions = use_quarterions

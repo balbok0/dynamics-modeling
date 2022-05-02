@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Tuple
 
 import numpy as np
 import rospy
@@ -11,19 +11,19 @@ class OdomTransform(AbstractTransform):
     topics = [{"/{robot_name}/odom"}]
     feature = "state"
 
-    def __init__(self, features: List[str]):
-        super().__init__(features)
+    def __init__(self):
+        super().__init__()
         self.end_bag()
 
     def callback(
         self, topic: str, msg: Odometry, ts: rospy.Time, current_state, *args, **kwargs
     ):
-        # Dictionaries are modified in place in python
         state = [msg.twist.twist.linear.x, msg.twist.twist.angular.z]
 
         self.state_history.append(state)
         self.ts_history.append(ts.to_sec())
 
+        # Dictionaries are modified in place in python
         current_state[self.__class__.feature] = np.array(state)
 
     def end_sequence(self) -> Tuple[np.ndarray, np.ndarray]:

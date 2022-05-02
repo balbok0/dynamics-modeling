@@ -15,9 +15,9 @@ class AutorallyGroundTruth(AbstractTransform):
     topics = [{"/{robot_name}/odom"}]
     feature = "autorally-ground-truth"
 
-    def __init__(self, features: List[str], use_quarterions: bool = True):
+    def __init__(self, use_quarterions: bool = True):
         """Ground Truth based on Autorally project."""
-        super().__init__(features)
+        super().__init__()
 
         self.previous_pose = None
         self.use_quarterions = use_quarterions

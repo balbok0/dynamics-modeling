@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Tuple
 
 import numpy as np
 import rospy
@@ -11,8 +11,8 @@ class GroundTruthTransform(AbstractTransform):
     topics = [{"/unity_command/ground_truth/{robot_name}"}, {"/{robot_name}/odom"}]
     feature = "target"
 
-    def __init__(self, features: List[str]):
-        super().__init__(features)
+    def __init__(self):
+        super().__init__()
 
         self.previous_pose = None
 
@@ -21,14 +21,6 @@ class GroundTruthTransform(AbstractTransform):
     def callback(
         self, topic: str, msg: Odometry, ts: rospy.Time, current_state, *args, **kwargs
     ):
-        # z_angle = trf.Rotation([
-        #     msg.pose.pose.orientation.x,
-        #     msg.pose.pose.orientation.y,
-        #     msg.pose.pose.orientation.z,
-        #     msg.pose.pose.orientation.w,
-        # ]).as_euler("zyx")[0]
-        # state = [msg.pose.pose.position.x, msg.pose.pose.position.y, z_angle]
-
         state = [msg.twist.twist.linear.x, msg.twist.twist.angular.z]
 
         self.state_history.append(state)

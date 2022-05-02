@@ -24,9 +24,6 @@ class AbstractTransform(ABC):
     def __call__(self, *args, **kwargs):
         return self.callback(*args, **kwargs)
 
-    def __init__(self, features: List[str]):
-        self.required_features = features
-
     @abstractmethod
     def callback(
         self,

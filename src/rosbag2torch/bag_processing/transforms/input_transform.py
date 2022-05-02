@@ -15,11 +15,8 @@ class InputTransform(AbstractTransform):
         0.15  # seconds. Time after which a new sequence is started.
     )
 
-    def __init__(self, features):
-        super().__init__(features)
-        self.required_features_set = set(
-            self.required_features
-        )  # This is to speed up check in the beggining of callback. It will run often
+    def __init__(self):
+        super().__init__()
         self.__last_known_gear: Optional[int] = None
 
         self.end_bag()
