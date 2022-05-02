@@ -47,7 +47,7 @@ class InputTransform(AbstractTransform):
 
             self.state_history.append(state)
             self.ts_history.append(ts.to_sec())
-        elif topic.endswith("state"):
+        elif topic.endswith("vehicle"):
             msg = cast(VehicleState, msg)
             self.__last_known_gear = msg.gearbox_mode
 

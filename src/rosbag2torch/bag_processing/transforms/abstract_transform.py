@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod, abstractproperty, abstractstaticmethod
+from abc import ABC, abstractmethod, abstractproperty
 from typing import Dict, List, Set, Tuple
 
 import numpy as np
@@ -6,9 +6,8 @@ import rospy
 
 
 class AbstractTransform(ABC):
-    @property
-    @abstractstaticmethod
-    def topics() -> List[Set[str]]:
+    @abstractproperty
+    def topics(self) -> List[Set[str]]:
         """
         An ordered list of sets of topics which given callback can process.
         """
