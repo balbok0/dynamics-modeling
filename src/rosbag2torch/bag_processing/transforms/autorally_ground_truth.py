@@ -12,7 +12,7 @@ from .abstract_transform import AbstractTransform
 
 
 class AutorallyGroundTruth(AbstractTransform):
-    topics = ["/{robot_name}/odom"]
+    topics = [{"/{robot_name}/odom"}]
     feature = "autorally-ground-truth"
 
     def __init__(self, features: List[str], use_quarterions: bool = True):
@@ -27,7 +27,9 @@ class AutorallyGroundTruth(AbstractTransform):
 
         self.spline_pwr = 3
 
-    def callback(self, msg: Odometry, ts: rospy.Time, current_state, *args, **kwargs):
+    def callback(
+        self, topic: str, msg: Odometry, ts: rospy.Time, current_state, *args, **kwargs
+    ):
         # Get angle of pose
         angle = np.array(
             [

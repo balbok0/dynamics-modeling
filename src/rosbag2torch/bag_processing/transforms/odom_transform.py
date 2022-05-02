@@ -8,14 +8,16 @@ from .abstract_transform import AbstractTransform
 
 
 class OdomTransform(AbstractTransform):
-    topics = ["/{robot_name}/odom"]
+    topics = [{"/{robot_name}/odom"}]
     feature = "state"
 
     def __init__(self, features: List[str]):
         super().__init__(features)
         self.end_bag()
 
-    def callback(self, msg: Odometry, ts: rospy.Time, current_state, *args, **kwargs):
+    def callback(
+        self, topic: str, msg: Odometry, ts: rospy.Time, current_state, *args, **kwargs
+    ):
         # Dictionaries are modified in place in python
         state = [msg.twist.twist.linear.x, msg.twist.twist.angular.z]
 

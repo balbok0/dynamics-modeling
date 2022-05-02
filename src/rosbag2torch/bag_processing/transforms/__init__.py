@@ -6,50 +6,69 @@ Sorting matters here, since some transforms might overlap in features/topics.
 isort:skip_file
 """
 from collections import defaultdict
-from inspect import isclass
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Type
 
 from .abstract_transform import AbstractTransform
-from . import (
-    ground_truth_transform,
-    input_transform,
-    autorally_ground_truth,
-    autorally_state,
-    odom_transform,
-)
+from .ground_truth_transform import GroundTruthTransform
+from .input_transform import InputTransform
+from .autorally_ground_truth import AutorallyGroundTruth
+from .autorally_state import AutorallyState
+from .odom_transform import OdomTransform
 
 
-def get_topics_and_transforms(
-    features: List[str], bag_topics: Set[str], format_map: Dict[str, str]
-) -> Dict[str, List[AbstractTransform]]:
-    result = defaultdict(list)
-    features_to_find = set(features)
+class __TransformStore:
 
-    # NOTE: Ordering matters here a lot!
-    for callback_module in [
-        ground_truth_transform,
-        input_transform,
-        odom_transform,
-        autorally_ground_truth,
-        autorally_state,
-    ]:
-        for obj_str in dir(callback_module):
-            # Faster filter for built-in tools and the abstract class
-            if obj_str.startswith("__") or obj_str == "AbstractTransform":
-                continue
+    __transforms: List[Type[AbstractTransform]] = [
+        GroundTruthTransform,
+        InputTransform,
+        AutorallyGroundTruth,
+        AutorallyState,
+        OdomTransform,
+    ]
 
-            obj = getattr(callback_module, obj_str)
-            if isclass(obj) and issubclass(obj, AbstractTransform):
-                # Check if it feature matches any of the requested features
-                if obj.feature in features_to_find:
-                    for topic in obj.topics:
-                        topic = topic.format_map(format_map)
+    @classmethod
+    def get_topics_and_transforms(
+        cls, features: List[str], bag_topics: Set[str], format_map: Dict[str, str]
+    ) -> Dict[str, List[AbstractTransform]]:
+        result = defaultdict(list)
+        features_to_find = set(features)
 
-                        if topic in bag_topics:
-                            # Topic exists in a bag, and feature is requested.
+        for transform_cls in cls.__transforms:
+            if transform_cls.feature in features_to_find:
+                for topic_set in transform_cls.topics:
+                    topic_set = {topic.format_map(format_map) for topic in topic_set}
 
-                            # Instantiate and append object to result
-                            result[topic].append(obj(features))
-                            features_to_find.discard(obj.feature)
-                            break
-    return result
+                    if topic_set.issubset(bag_topics):
+                        # Topic exists in a bag, and feature is requested.
+
+                        # Instantiate and append object to result
+                        transform_instance = transform_cls(features)
+                        for topic in topic_set:
+                            result[topic].append(transform_instance)
+                        features_to_find.discard(transform_cls.feature)
+
+                        # Break looping over topic sets
+                        break
+
+        return result
+
+    @classmethod
+    def register_transform(cls, transform: Type[AbstractTransform]):
+        cls.__transforms.append(transform)
+
+
+# Expose public functions
+get_topics_and_transforms = __TransformStore.get_topics_and_transforms
+register_transform = __TransformStore.register_transform
+
+
+__all__ = [
+    "AbstractTransform",
+    "GroundTruthTransform",
+    "InputTransform",
+    "AutorallyGroundTruth",
+    "AutorallyState",
+    "OdomTransform",
+    "get_topics_and_transforms",
+    "register_transform",
+]

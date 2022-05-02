@@ -8,7 +8,7 @@ from .abstract_transform import AbstractTransform
 
 
 class GroundTruthTransform(AbstractTransform):
-    topics = ["/unity_command/ground_truth/{robot_name}", "/{robot_name}/odom"]
+    topics = [{"/unity_command/ground_truth/{robot_name}"}, {"/{robot_name}/odom"}]
     feature = "target"
 
     def __init__(self, features: List[str]):
@@ -18,7 +18,9 @@ class GroundTruthTransform(AbstractTransform):
 
         self.end_bag()
 
-    def callback(self, msg: Odometry, ts: rospy.Time, current_state, *args, **kwargs):
+    def callback(
+        self, topic: str, msg: Odometry, ts: rospy.Time, current_state, *args, **kwargs
+    ):
         # z_angle = trf.Rotation([
         #     msg.pose.pose.orientation.x,
         #     msg.pose.pose.orientation.y,
