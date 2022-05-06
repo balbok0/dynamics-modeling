@@ -36,7 +36,8 @@ class BackwardFilter(AbstractFilter):
         is_vel_negative = vel < -1e-6
 
         self.cur_state = (
-            is_vel_negative or (ts - self.last_forward_msg) < self.after_last_threshold_log
+            is_vel_negative
+            or (ts - self.last_forward_msg) < self.after_last_threshold_log
         )
 
         if is_vel_negative:

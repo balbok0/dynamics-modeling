@@ -6,6 +6,7 @@ from .util import flip_filter, get_filters_topics
 
 __all__ = [
     "AbstractFilter",
+    "BackwardFilter",
     "get_filters_topics",
     "ForwardFilter",
     "PIDInfoFilter",
