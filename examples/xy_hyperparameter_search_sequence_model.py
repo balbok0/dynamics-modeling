@@ -1,16 +1,13 @@
 from datetime import datetime
-from typing import List, Tuple
-from matplotlib import pyplot as plt
+from typing import Tuple
 import numpy as np
 
-import copy
-from rosbag2torch import SequenceLookaheadDataset, filters, load_bags, readers
+from rosbag2torch import filters, load_bags, readers
 import torch
-from torch import nn, optim
-from torch.utils.data import DataLoader
+from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
-from example_utils import StateControlBaseline, StateControlTrainableModel, augment_sequences_reflect_steer, train, unroll_sequence_torch, plot_rollout
+from example_utils import augment_sequences_reflect_steer, unroll_sequence_torch, single_hyperparameter_thread
 from rosbag2torch.bag_processing.sequence_readers.abstract_sequence_reader import Sequences
 
 
@@ -58,68 +55,6 @@ def loss_from_batch(model: nn.Module, batch: Tuple[torch.Tensor, ...], criterion
     return criterion(pred_x, true_x) + criterion(pred_y, true_y) + criterion(pred_theta, true_theta)
 
 
-def single_hyperparameter_thread(
-    train_sequences: Sequences,
-    val_sequences: Sequences,
-    features: List[str],
-    delayed_features: List[str],
-    delay_steps: float,
-    rollout_s: float,
-    hidden_size: float,
-    num_hidden_layers: float,
-    epochs: float,
-    batch_size: float,
-    activation_fn: nn.Module,
-    lr: float,
-    reader_str: str,
-    log_hz: float,
-    collapse_throttle_brake: bool,
-    rollout_s_validation: float = 5.0,
-):
-    rollout_len = int(rollout_s  * log_hz)
-
-    train_dataset = SequenceLookaheadDataset(train_sequences, features, delayed_features, delay_steps=delay_steps, sequence_length=rollout_len)
-    val_dataset = SequenceLookaheadDataset(val_sequences, features, delayed_features, delay_steps=delay_steps, sequence_length=int(rollout_s_validation * log_hz))
-    if len(train_dataset) == 0 or len(val_dataset) == 0:
-        return None
-
-    settings_suffix = f"delay_{delay_steps}_rollout_{rollout_s}s_hidden_{hidden_size}_layers_{num_hidden_layers}_activation_{activation_fn.__class__.__name__}_lr_{lr:.2e}_bs_{batch_size}_epochs_{epochs}_reader_{reader_str}"
-    date_suffix = datetime.now().strftime("%b%d_%H-%M-%S")
-
-    model = StateControlTrainableModel(activation=activation_fn, hidden_size=hidden_size, num_hidden_layers=num_hidden_layers, collapse_throttle_brake=collapse_throttle_brake)
-    optimizer = optim.Adam(model.parameters(), weight_decay=0.01, lr=lr)
-    criterion = nn.MSELoss()
-
-
-    writer_name = f"runs/xy_sequence_model_{settings_suffix}_{date_suffix}"
-    model_prefix = f"models/xy_sequence_model_{settings_suffix}_{date_suffix}"
-
-    writer = SummaryWriter(log_dir=writer_name)
-
-    val_loss = train(
-        model=model,
-        optimizer=optimizer,
-        forward_fn=lambda *args, **kwargs: loss_from_batch(*args, **kwargs, criterion=criterion),
-        train_loader=DataLoader(train_dataset, batch_size=batch_size, shuffle=True),
-        model_baseline=StateControlBaseline(delay_steps * 1.0 / log_hz, 0.001, 3.0),
-        epochs=epochs,
-        val_loader=DataLoader(val_dataset, batch_size=batch_size, shuffle=True),
-        verbose=True,
-        writer=writer
-    )
-
-    torch.save(model.state_dict(), f"{model_prefix}_state_dict.pt")
-    torch.jit.script(model).save(f"{model_prefix}_scripted.pt")
-
-    train_img = plot_rollout(model, train_dataset, rollout_s_validation)
-    writer.add_image("Best Model (Train Sequence)", train_img, 0, dataformats="HWC")
-
-    val_img = plot_rollout(model, val_dataset, rollout_s_validation)
-    writer.add_image("Best Model (Val Sequence)", val_img, 0, dataformats="HWC")
-
-    return writer_name, val_loss
-
-
 def main():
     DATASET_TRAIN = "datasets/rzr_real"
     DATASET_VAL = "datasets/rzr_real_val"
@@ -160,6 +95,10 @@ def main():
 
     # Validation Sequences
     val_sequences = load_bags(DATASET_VAL, async_reader)
+
+    # Use MSE for everything
+    criterion = nn.MSELoss()
+    forward_fn = lambda *args, **kwargs: loss_from_batch(*args, **kwargs, criterion=criterion)
 
     date_suffix = datetime.now().strftime("%b%d_%H-%M-%S")
     writer = SummaryWriter(log_dir=f"runs/xy_hyperparameter_search_{DATASET_TRAIN}_sequence_model_{date_suffix}")
@@ -210,6 +149,8 @@ def main():
             delayed_features=delayed_features,
             log_hz=log_hz,
             epochs=epochs,
+            forward_fn=forward_fn,
+            model_prefix="xy_sequence_model",
             **hyperparam_settings
         )
 
