@@ -313,6 +313,8 @@ def single_hyperparameter_thread(
 
     train_dataset = SequenceLookaheadDataset(train_sequences, features, delayed_features, delay_steps=delay_steps, sequence_length=rollout_len)
     val_dataset = SequenceLookaheadDataset(val_sequences, features, delayed_features, delay_steps=delay_steps, sequence_length=int(rollout_s_validation * log_hz))
+    if len(train_dataset) == 0 or len(val_dataset) == 0:
+        return None
 
     settings_suffix = f"delay_{delay_steps}_rollout_{rollout_s}s_hidden_{hidden_size}_layers_{num_hidden_layers}_activation_{activation_fn.__class__.__name__}_lr_{lr:.2e}_bs_{batch_size}_epochs_{epochs}_reader_{reader_str}"
     date_suffix = datetime.now().strftime("%b%d_%H-%M-%S")
@@ -425,10 +427,11 @@ def main():
     val_sequences = load_bags(DATASET_VAL, async_reader)
 
     date_suffix = datetime.now().strftime("%b%d_%H-%M-%S")
-    writer = SummaryWriter(log_dir=f"runs/xy_hyperparameter_search_sequence_model_{date_suffix}")
+    writer = SummaryWriter(log_dir=f"runs/xy_hyperparameter_search_{DATASET_TRAIN}_sequence_model_{date_suffix}")
 
     NUM_HYPERPARAM_SEARCHES = 50
-    for _ in range(NUM_HYPERPARAM_SEARCHES):
+    i = 0
+    while i < NUM_HYPERPARAM_SEARCHES:
         # Sequence/Data Parameters
         delay_steps = np.random.randint(3, 8)  # indices
         # delay_steps = 7  # indices
@@ -465,7 +468,7 @@ def main():
             "collapse_throttle_brake": collapse_throttle_brake
         }
 
-        hyperparam_writer_path, hyperparam_val_loss = single_hyperparameter_thread(
+        hyperparam_result = single_hyperparameter_thread(
             train_sequences=train_sequences,
             val_sequences=val_sequences,
             features=features,
@@ -474,6 +477,12 @@ def main():
             epochs=epochs,
             **hyperparam_settings
         )
+
+        if hyperparam_result is None:
+            continue
+        i += 1
+
+        hyperparam_writer_path, hyperparam_val_loss = hyperparam_result
 
         # For writing to tensorboard we want activation function to be a string
         hyperparam_settings["activation_fn"] = hyperparam_settings["activation_fn"].__class__.__name__
