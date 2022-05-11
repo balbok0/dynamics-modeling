@@ -29,5 +29,7 @@ def load_bags(
 
     if len(sequences) == 0:
         print("Warning: reader found no sequences in {}".format(data_folder))
+    else:
+        print("Found {} sequences".format(len(sequences)))
 
     return sequences
