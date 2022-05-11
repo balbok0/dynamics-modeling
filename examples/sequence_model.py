@@ -98,7 +98,9 @@ def train(
         running_loss_rollout_steps = defaultdict(float)
         running_total_loss = 0.0
         running_baseline_loss = 0.0
-        for controls, states, targets, dts in tqdm(train_loader, disable=not verbose, desc="Train", leave=False):
+        for batch in tqdm(train_loader, disable=not verbose, desc="Train", leave=False):
+            controls, _, states, states_dts, targets, target_dts = batch
+            dts = target_dts - states_dts
             # Convert to FloatTensor
             controls, states, targets, dts = controls.float(), states.float(), targets.float(), dts.float()
 
@@ -170,7 +172,9 @@ def train(
 
                 running_baseline_loss = 0.0
 
-                for controls, states, targets, dts in tqdm(val_loader, disable=not verbose, desc="Val", leave=False):
+                for batch in tqdm(val_loader, disable=not verbose, desc="Val", leave=False):
+                    controls, _, states, states_dts, targets, target_dts = batch
+                    dts = target_dts - states_dts
                     controls, states, targets, dts = controls.float(), states.float(), targets.float(), dts.float()
 
                     # Forward pass - Unroll the trajectory
@@ -319,8 +323,8 @@ def main():
     LR = 1e-3
     BATCH_SIZE = 32
 
-    DATASET_TRAIN = "datasets/rzr_real"
-    DATASET_VAL = "datasets/rzr_real_val"
+    DATASET_TRAIN = "datasets/rzr_real_debug"
+    DATASET_VAL = "datasets/rzr_real_debug_val"
 
     # Suffix to use for saving this configuration. Shared for tensorboard and models
     settings_suffix = f"delay_{DELAY_STEPS}_rollout_{ROLLOUT_S}s_hidden_{HIDDEN_SIZE}_layers_{NUM_HIDDEN_LAYERS}_activation_{ACTIVATION_FN.__class__.__name__}_lr_{LR:.2e}_bs_{BATCH_SIZE}_epochs_{EPOCHS}"
@@ -361,11 +365,16 @@ def main():
     rollout_len = int(ROLLOUT_S  * log_hz)
 
     val_sequences = load_bags(DATASET_VAL, reader)
-    val_dataset = SequenceLookaheadDataset(val_sequences, features, delayed_features, delay_steps=DELAY_STEPS, sequence_length=rollout_len)
+    val_dataset = SequenceLookaheadDataset(
+        val_sequences, [("control", 0), ("state", 3), ("target", 4)], sequence_length=rollout_len
+    )
     train_sequences = load_bags(DATASET_TRAIN, train_reader)
     train_dataset = SequenceLookaheadDataset(
-        train_sequences, features, delayed_features, delay_steps=DELAY_STEPS, sequence_length=rollout_len
+        train_sequences, [("control", 0), ("state", 3), ("target", 4)], sequence_length=rollout_len
     )
+    # train_dataset = SequenceLookaheadDataset(
+    #     train_sequences, features, delayed_features, delay_steps=DELAY_STEPS, sequence_length=rollout_len
+    # )
 
     model_prefix = f"models/sequence_model_{settings_suffix}"
     if not Path(model_prefix).parent.exists():
