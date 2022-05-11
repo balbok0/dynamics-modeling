@@ -405,7 +405,8 @@ def plot_rollout(model: nn.Module, dataset: SequenceLookaheadDataset, rollout_s:
     fig, ax = plt.figure(figsize=(10, 10)), plt.subplot(111)
     ax: plt.Axes
 
-    controls, states, targets, dts = dataset.longest_rollout
+    controls, _, states, states_dts, targets, target_dts = dataset.longest_rollout
+    dts = target_dts - states_dts
     poses_true, start_poses, poses_pred_all = get_world_frame_rollouts(model, states, controls, dts, rollout_in_seconds=rollout_s)
 
     ax.scatter(start_poses[:, 0], start_poses[:, 1], color="red", marker="X")
@@ -458,8 +459,8 @@ def single_hyperparameter_thread(
 ):
     rollout_len = int(rollout_s  * log_hz)
 
-    train_dataset = SequenceLookaheadDataset(train_sequences, features, delayed_features, delay_steps=delay_steps, sequence_length=rollout_len)
-    val_dataset = SequenceLookaheadDataset(val_sequences, features, delayed_features, delay_steps=delay_steps, sequence_length=int(rollout_s_validation * log_hz))
+    train_dataset = SequenceLookaheadDataset(train_sequences, [("control", 0), ("state", delay_steps), ("target", delay_steps + 1)], sequence_length=rollout_len)
+    val_dataset = SequenceLookaheadDataset(val_sequences, [("control", 0), ("state", delay_steps), ("target", delay_steps + 1)], sequence_length=int(rollout_s_validation * log_hz))
     if len(train_dataset) == 0 or len(val_dataset) == 0:
         return None
 

@@ -32,7 +32,8 @@ def unroll_world_frame_torch(states: torch.Tensor, dts: torch.Tensor) -> torch.T
 
 def loss_from_batch(model: nn.Module, batch: Tuple[torch.Tensor, ...], criterion: nn.Module = nn.MSELoss()) -> torch.Tensor:
     # Unpack batch
-    controls, states, targets, dts = batch
+    controls, _, states, states_dts, targets, target_dts = batch
+    dts = target_dts - states_dts
 
     # Convert to FloatTensor
     controls, states, targets, dts = controls.float(), states.float(), targets.float(), dts.float()

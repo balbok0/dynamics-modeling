@@ -93,14 +93,12 @@ class SequenceLookaheadDataset(Dataset):
 
             # Add torch sequences
             for f, delay in features:
-                print("Feature:", f, "Delay:", delay, "Max delay:", max_delay)
                 if delay == max_delay:
                     cur_seq[f"{f}_{delay}"] = torch.from_numpy(seq[f][delay:])
                     cur_seq[f"time_{delay}"] = torch.from_numpy(seq["time"][delay:] - seq["time"][:-delay])
                 else:
                     cur_seq[f"{f}_{delay}"] = torch.from_numpy(seq[f][delay:-(max_delay - delay)])
                     cur_seq[f"time_{delay}"] = torch.from_numpy(seq["time"][delay:-(max_delay - delay)] - seq["time"][:-max_delay])
-                print("Shape:", cur_seq[f"{f}_{delay}"].shape)
 
             # Check key is used for checking length of this sequence etc.
             # It should not be assumed to be a specific feature
@@ -113,8 +111,6 @@ class SequenceLookaheadDataset(Dataset):
             num_rollouts = (
                 len(cur_seq[check_key]) - sequence_length + 1
             )
-
-            print(f"Sequence {seq_idx} has {num_rollouts} rollouts")
 
             # Sequence too short. No rollouts can be read
             if num_rollouts <= 0:

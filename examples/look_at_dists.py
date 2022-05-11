@@ -11,25 +11,25 @@ def main():
     delayed_features = ["target"]
 
     # # Async Reader
-    # reader = readers.ASyncSequenceReader(
-    #     list(set(features + delayed_features)),
-    #     features_to_record_on=["control"],
-    #     filters=[
-    #         filters.ForwardFilter(),
-    #         filters.PIDInfoFilter()
-    #     ]
-    # )
-
-    # Fixed Timestamp Reader
-    log_hz = 30
-    train_reader = readers.FixedIntervalReader(
+    train_reader = readers.ASyncSequenceReader(
         list(set(features + delayed_features)),
-        log_interval=1.0 / log_hz,
+        features_to_record_on=["control"],
         filters=[
             filters.ForwardFilter(),
             filters.PIDInfoFilter()
         ]
     )
+
+    # Fixed Timestamp Reader
+    # log_hz = 30
+    # train_reader = readers.FixedIntervalReader(
+    #     list(set(features + delayed_features)),
+    #     log_interval=1.0 / log_hz,
+    #     filters=[
+    #         filters.ForwardFilter(),
+    #         filters.PIDInfoFilter()
+    #     ]
+    # )
 
     train_sequences = load_bags(DATASET_TRAIN, train_reader)
 
@@ -50,17 +50,22 @@ def main():
 
     control_throttle_brake_combined = np.array(control_throttle) - np.array(control_brake)
 
+    plt.hist2d(control_throttle, control_brake, bins=100)
+    plt.xlabel("Throttle")
+    plt.ylabel("Brake")
+    plt.show()
+
     for title, data in [
-        ("state_dx", state_dx),
-        ("state_dtheta", state_dtheta),
-        ("control_steer", control_steer),
+        # ("state_dx", state_dx),
+        # ("state_dtheta", state_dtheta),
+        # ("control_steer", control_steer),
         ("control_throttle", control_throttle),
-        ("control_brake", control_brake),
+        # ("control_brake", control_brake),
         ("control_throttle_brake_combined", control_throttle_brake_combined),
     ]:
         plt.figure()
         plt.title(f"{title} - {np.mean(data):.4g}")
-        plt.plot(data)
+        plt.hist(data)
         plt.show()
 
 

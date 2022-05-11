@@ -372,9 +372,6 @@ def main():
     train_dataset = SequenceLookaheadDataset(
         train_sequences, [("control", 0), ("state", 3), ("target", 4)], sequence_length=rollout_len
     )
-    # train_dataset = SequenceLookaheadDataset(
-    #     train_sequences, features, delayed_features, delay_steps=DELAY_STEPS, sequence_length=rollout_len
-    # )
 
     model_prefix = f"models/sequence_model_{settings_suffix}"
     if not Path(model_prefix).parent.exists():
@@ -409,7 +406,8 @@ def main():
                 model.load_state_dict(torch.load(f"{model_prefix}_state_dict.pt"))
             model.eval()
 
-            controls, states, targets, dts = train_dataset.longest_rollout
+            controls, _, states, states_dts, targets, target_dts = train_dataset.longest_rollout
+            dts = target_dts - states_dts
             poses_true, start_poses, poses_pred_all = get_world_frame_rollouts(model, states, controls, dts, rollout_in_seconds=ROLLOUT_S)
 
             plt.scatter(start_poses[:, 0], start_poses[:, 1], color="red", marker="X")
@@ -435,7 +433,8 @@ def main():
                 model.load_state_dict(torch.load(f"{model_prefix}_state_dict.pt"))
             model.eval()
 
-            controls, states, targets, dts = val_dataset.longest_rollout
+            controls, _, states, states_dts, targets, target_dts = train_dataset.longest_rollout
+            dts = target_dts - states_dts
             poses_true, start_poses, poses_pred_all = get_world_frame_rollouts(model, states, controls, dts, rollout_in_seconds=ROLLOUT_S)
 
             plt.scatter(start_poses[:, 0], start_poses[:, 1], color="red", marker="X")
