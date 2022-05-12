@@ -40,11 +40,27 @@ class SequenceLookaheadDataset(Dataset):
         self.__total_len = sum(self.__sequence_lengths)
 
     def __len__(self) -> int:
+        """Number of rollouts/sequences in this dataset.
+        """
         return self.__total_len
 
     def __get_sequence_of_length(
         self, index: int, sequence_length: int
     ) -> Tuple[torch.Tensor, ...]:
+        """Returns a sequence of requested length.
+
+        Args:
+            index (int): Index of rollout to return.
+            sequence_length (int): Length of rollout to return.
+
+        Returns:
+            Tuple[torch.Tensor, ...]: Tuple of tensors with length twice the number of features passed to constructor.
+                For example if passed in features are "control", "state", it would return tuple of corresponding to:
+                    1. control features
+                    2. time offset of control features (with respect to smallest offset across features)
+                    3. state features
+                    4. time offset of state features (with respect to smallest offset across features)
+        """
         sequence_idx = bisect_right(self.__sequence_start_idxs, index) - 1  # type: ignore
         rollout_idx = index - self.__sequence_start_idxs[sequence_idx]
 
@@ -56,10 +72,29 @@ class SequenceLookaheadDataset(Dataset):
         return tuple(result)
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, ...]:
+        """Returns a rollout from a specific index.
+
+        Args:
+            index (int): Index of rollout to return.
+
+        Returns:
+            Tuple[torch.Tensor, ...]: Tuple of tensors with length twice the number of features passed to constructor.
+                For example if passed in features are "control", "state", it would return tuple of corresponding to:
+                    1. control features
+                    2. time offset of control features (with respect to smallest offset across features)
+                    3. state features
+                    4. time offset of state features (with respect to smallest offset across features)
+        """
         return self.__get_sequence_of_length(index, self.__sequence_length)
 
     @property
     def longest_rollout(self) -> Tuple[torch.Tensor, ...]:
+        """
+
+        Returns:
+            Tuple[torch.Tensor, ...]: Tuple of tensors.
+                Similar to __getitem__, except instead rollout being of length `sequence_length`, it's maximum possible length.
+        """
         return self.__get_sequence_of_length(
             self.__sequence_start_idxs[self.__max_len_rollout_idx],
             self.__max_len_rollout,
@@ -72,7 +107,26 @@ class SequenceLookaheadDataset(Dataset):
         sequence_length: int,
         *args,
         **kwargs,
-    ):
+    ) -> Tuple[List[Dict[str, torch.Tensor]], List[int], int, int]:
+        """Parses synchronized sequences (i.e. there is a set of features for each timestamp).
+
+        Args:
+            sequences (RawSequences): Sequences to parse.
+            features (List[Tuple[str, int]]): Features to extract from the sequence with the delay/offset for each feature.
+            sequence_length (int): Length of each rollout (sequence in ML understanding) to extract.
+                This is used to calculate number of possible rollouts.
+
+        Returns:
+            Tuple[List[Dict[str, torch.Tensor]], List[int], int, int]: Tuple of 4 elements containing:
+
+                1. List of Dictionaries of processed sequences with proper delay synchronization.
+                    Note that for saving data purposes they are still of full length and **not** sequence_length rollouts.
+                    The indexing done it __get_sequence_of_length function retrieves rollouts from these sequences.
+                2. List of number of rollouts for each sequence returned in the first element of this tuple.
+                    Each sequence will contain different number of rollouts which are tracked here for ease of use.
+                3. Index of sequence with the longest possible rollout.
+                4. Length of the longest rollout across all sequences.
+        """
         processed_sequences: List[Dict[str, torch.Tensor]] = []
         sequence_lengths: List[int] = []
         max_len_rollout = 0
