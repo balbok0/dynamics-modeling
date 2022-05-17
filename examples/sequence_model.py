@@ -360,12 +360,10 @@ def main():
     rollout_len = int(ROLLOUT_S  * log_hz)
 
     val_sequences = load_bags(DATASET_VAL, reader)
-    val_sequences = val_sequences[5:6] + val_sequences[8:9]
     val_dataset = SequenceLookaheadDataset(
         val_sequences, [("control", 0), ("state", 3), ("target", 4)], sequence_length=rollout_len
     )
     train_sequences = load_bags(DATASET_TRAIN, reader)
-    train_sequences = train_sequences[0:5] + train_sequences[6:8]
     train_dataset = SequenceLookaheadDataset(
         train_sequences, [("control", 0), ("state", 3), ("target", 4)], sequence_length=rollout_len
     )
