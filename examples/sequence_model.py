@@ -103,6 +103,7 @@ def train(
             dts = target_dts - states_dts
             # Convert to FloatTensor
             controls, states, targets, dts = controls.float(), states.float(), targets.float(), dts.float()
+            batch_size = batch[0].shape[0]
 
             # Zero-out the gradient
             optimizer.zero_grad()
@@ -121,7 +122,7 @@ def train(
             for rollout_idx, (pred, target) in enumerate(zip(predictions, targets.transpose(0, 1))):
                 loss = criterion(pred, target)
                 rollout_losses.append(loss)
-                running_loss_rollout_steps[rollout_idx] += loss.detach().cpu().item()
+                running_loss_rollout_steps[rollout_idx] += batch_size*loss.detach().cpu().item()
 
             # Total loss is the sum of the losses at each trajectory point
             loss = sum(rollout_losses)
@@ -131,7 +132,7 @@ def train(
             optimizer.step()
 
             # Log loss
-            running_total_loss += loss.detach().cpu().item()
+            running_total_loss += batch_size*loss.detach().cpu().item()
 
             # Repeat for baseline model
             with torch.no_grad():
@@ -150,19 +151,19 @@ def train(
 
                     # Total loss is the sum of the losses at each trajectory point
                     baseline_loss = sum(baseline_rollout_losses)
-                    running_baseline_loss += baseline_loss.detach().cpu().item()
+                    running_baseline_loss += batch_size*baseline_loss.detach().cpu().item()
 
         # Run zero_grad at the end of each epoch, just in case
         optimizer.zero_grad()
 
-        train_loss = running_total_loss / len(train_loader)
-        train_baseline_loss = running_baseline_loss / len(train_loader)
+        train_loss = running_total_loss / len(train_loader.dataset)
+        train_baseline_loss = running_baseline_loss / len(train_loader.dataset)
         if writer is not None:
             writer.add_scalar("Loss/train total", train_loss, epoch)
             if model_baseline is not None:
                 writer.add_scalar("Loss/train total baseline", train_baseline_loss, epoch)
             for rollout_idx, rollout_loss in running_loss_rollout_steps.items():
-                writer.add_scalar(f"Loss/train @ rollout step {rollout_idx}", rollout_loss / len(train_loader), epoch)
+                writer.add_scalar(f"Loss/train @ rollout step {rollout_idx}", rollout_loss / len(train_loader.dataset), epoch)
         desc = f"Epochs Train Loss {train_loss:.4g} Baseline {train_baseline_loss:.4g}"
 
         if val_loader is not None:
@@ -176,6 +177,7 @@ def train(
                     controls, _, states, states_dts, targets, target_dts = batch
                     dts = target_dts - states_dts
                     controls, states, targets, dts = controls.float(), states.float(), targets.float(), dts.float()
+                    batch_size = batch[0].shape[0]
 
                     # Forward pass - Unroll the trajectory
                     predictions = unroll_sequence_torch(
@@ -190,10 +192,10 @@ def train(
                     for rollout_idx, (pred, target) in enumerate(zip(predictions, targets.transpose(0, 1))):
                         loss = criterion(pred, target)
                         rollout_losses.append(loss)
-                        running_loss_rollout_steps[rollout_idx] += loss.detach().cpu().item()
+                        running_loss_rollout_steps[rollout_idx] += batch_size*loss.detach().cpu().item()
 
                     loss = sum(rollout_losses)
-                    running_loss += loss.detach().cpu().item()
+                    running_loss += batch_size*loss.detach().cpu().item()
 
                     # Repeat for baseline model
                     if model_baseline is not None:
@@ -211,17 +213,17 @@ def train(
 
                         # Total loss is the sum of the losses at each trajectory point
                         baseline_loss = sum(baseline_rollout_losses)
-                        running_baseline_loss += baseline_loss.detach().cpu().item()
+                        running_baseline_loss += batch_size*baseline_loss.detach().cpu().item()
 
 
-                val_loss = running_loss / len(val_loader)
-                val_baseline_loss = running_baseline_loss / len(val_loader)
+                val_loss = running_loss / len(val_loader.dataset)
+                val_baseline_loss = running_baseline_loss / len(val_loader.dataset)
                 if writer is not None:
                     writer.add_scalar("Loss/val total", val_loss, epoch)
                     if model_baseline is not None:
                         writer.add_scalar("Loss/val total baseline", val_baseline_loss, epoch)
                     for rollout_idx, rollout_loss in running_loss_rollout_steps.items():
-                        writer.add_scalar(f"Loss/val @ rollout step {rollout_idx}", rollout_loss / len(val_loader), epoch)
+                        writer.add_scalar(f"Loss/val @ rollout step {rollout_idx}", rollout_loss / len(val_loader.dataset), epoch)
                 desc += f" Val Loss {val_loss:.4g} Baseline {val_baseline_loss:.4g}"
 
         trange_epochs.set_description(desc)
