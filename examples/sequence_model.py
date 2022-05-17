@@ -311,7 +311,7 @@ def main():
 
     # Sequence/Data Parameters
     DELAY_STEPS = 3  # indices
-    ROLLOUT_S = 5  # seconds
+    ROLLOUT_S = 1  # seconds
 
     # Model Parameters
     ACTIVATION_FN = nn.SELU()
@@ -328,6 +328,7 @@ def main():
 
     # Suffix to use for saving this configuration. Shared for tensorboard and models
     settings_suffix = f"delay_{DELAY_STEPS}_rollout_{ROLLOUT_S}s_hidden_{HIDDEN_SIZE}_layers_{NUM_HIDDEN_LAYERS}_activation_{ACTIVATION_FN.__class__.__name__}_lr_{LR:.2e}_bs_{BATCH_SIZE}_epochs_{EPOCHS}"
+    model_suffix = f"real_forwards_{settings_suffix}"
 
     # What features to read.
     # NOTE: Values corresponding to these (and their ordering) are hardcoded in the model and train loop. Changing them here will break the code.
@@ -351,29 +352,23 @@ def main():
         log_interval=1.0 / log_hz,
         filters=[
             filters.ForwardFilter(),
-            filters.PIDInfoFilter()
-        ]
-    )
-    train_reader = readers.FixedIntervalReader(
-        list(set(features + delayed_features)),
-        log_interval=1.0 / log_hz,
-        filters=[
-            filters.ForwardFilter(),
-            filters.PIDInfoFilter()
+            filters.PIDInfoFilter(),
         ]
     )
     rollout_len = int(ROLLOUT_S  * log_hz)
 
     val_sequences = load_bags(DATASET_VAL, reader)
+    val_sequences = val_sequences[5:6] + val_sequences[8:9]
     val_dataset = SequenceLookaheadDataset(
         val_sequences, [("control", 0), ("state", 3), ("target", 4)], sequence_length=rollout_len
     )
-    train_sequences = load_bags(DATASET_TRAIN, train_reader)
+    train_sequences = load_bags(DATASET_TRAIN, reader)
+    train_sequences = train_sequences[0:5] + train_sequences[6:8]
     train_dataset = SequenceLookaheadDataset(
         train_sequences, [("control", 0), ("state", 3), ("target", 4)], sequence_length=rollout_len
     )
 
-    model_prefix = f"models/sequence_model_{settings_suffix}"
+    model_prefix = f"models/sequence_model_{model_suffix}"
     if not Path(model_prefix).parent.exists():
         Path(model_prefix).parent.mkdir(parents=True)
 
@@ -382,7 +377,7 @@ def main():
         optimizer = optim.Adam(model.parameters(), weight_decay=0.01, lr=LR)
         criterion = nn.MSELoss()
 
-        writer = SummaryWriter(log_dir=f"runs/sequence_model_{settings_suffix}_{datetime.now().strftime('%b%d_%H-%M-%S')}")
+        writer = SummaryWriter(log_dir=f"runs/sequence_model_{model_suffix}_{datetime.now().strftime('%b%d_%H-%M-%S')}")
 
         train(
             model=model,
@@ -423,7 +418,7 @@ def main():
             plt.ylabel("y")
             if not os.path.exists("plots"):
                 os.makedirs("plots")
-            plt.savefig(f"plots/sequence_model_train_{settings_suffix}.png", bbox_inches="tight")
+            plt.savefig(f"plots/sequence_model_train_{model_suffix}.png", bbox_inches="tight")
             plt.show()
 
     if PLOT_VAL:
@@ -433,7 +428,7 @@ def main():
                 model.load_state_dict(torch.load(f"{model_prefix}_state_dict.pt"))
             model.eval()
 
-            controls, _, states, states_dts, targets, target_dts = train_dataset.longest_rollout
+            controls, _, states, states_dts, targets, target_dts = val_dataset.longest_rollout
             dts = target_dts - states_dts
             poses_true, start_poses, poses_pred_all = get_world_frame_rollouts(model, states, controls, dts, rollout_in_seconds=ROLLOUT_S)
 
@@ -450,7 +445,7 @@ def main():
             plt.ylabel("y")
             if not os.path.exists("plots"):
                 os.makedirs("plots")
-            plt.savefig(f"plots/sequence_model_val_{settings_suffix}.png", bbox_inches="tight")
+            plt.savefig(f"plots/sequence_model_val_{model_suffix}.png", bbox_inches="tight")
             plt.show()
 
 if __name__ == "__main__":
