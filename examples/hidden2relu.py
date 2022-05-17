@@ -71,7 +71,7 @@ def train(
 def main():
     DELAY_STEPS = 15
     EPOCHS = 50
-    TRAIN = True
+    TRAIN = False
     PLOT_VAL = True
     PLOT_LEN_ROLLOUT = 10  # seconds
 
@@ -90,15 +90,14 @@ def main():
         ["control", "state", "target"],
         log_interval=1 / 30.,
         filters=[
-            filters.BackwardFilter(),
+            filters.ForwardFilter(),
+            filters.PIDInfoFilter()
         ]
     )
 
-    sequences = load_bags("/home/nhatch2/Downloads/racer_data/sim_dynamics_backwards", reader)
-    train_sequences = sequences[0:3] + sequences[4:8]
-    val_sequences = sequences[3:4] + sequences[8:9]
+    val_sequences = load_bags("datasets/rzr_real_val", reader)
 
-    model_name = f"models/sim_backward.pt"
+    model_name = f"models/example_hidden2relu_delay_{DELAY_STEPS}_model.pt"
 
 
     if TRAIN:
@@ -112,6 +111,7 @@ def main():
         optimizer = optim.Adam(model.parameters(), weight_decay=0.01)
         criterion = nn.MSELoss()
 
+        train_sequences = load_bags("datasets/rzr_real", reader)
         train_dataset = LookaheadDataset(train_sequences, ["control", "state"], ["target"], delay_steps=DELAY_STEPS)
 
         val_dataset = LookaheadDataset(val_sequences, ["control", "state"], ["target"], delay_steps=DELAY_STEPS)
@@ -163,7 +163,7 @@ def main():
             plt.title("Predicted velocity Displacement (acc./model output * dt)")
             if not os.path.exists("plots"):
                 os.makedirs("plots")
-            plt.savefig(f"plots/sim_backward_plots.png")
+            plt.savefig(f"plots/dx_dtheta_pred_delay_{DELAY_STEPS}.png")
             plt.show()
 
             # Convert from (dx, dtheta) to (dx, dy, dtheta)
@@ -240,7 +240,7 @@ def main():
             plt.ylabel("y (m)")
             if not os.path.exists("plots"):
                 os.makedirs("plots")
-            plt.savefig(f"plots/sim_backwards_qualitative.png")
+            plt.savefig(f"plots/hidden2relu_delay_{DELAY_STEPS}_rollout.png")
             plt.show()
 
 
