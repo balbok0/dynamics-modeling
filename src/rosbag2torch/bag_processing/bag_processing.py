@@ -30,6 +30,7 @@ def load_bags(
     if len(sequences) == 0:
         print("Warning: reader found no sequences in {}".format(data_folder))
     else:
-        print("Found {} sequences".format(len(sequences)))
+        print("Found {} sequences of len {}".format(
+            len(sequences), list(map(lambda s: len(s["time"]), sequences))))
 
     return sequences
