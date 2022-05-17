@@ -113,12 +113,6 @@ There are also additional scripts:
 * look_at_dists - A script that can be used to look at the distribution of the training data.
 * unit_tests - Script that can perform some controlled tests given a scripted model. TODO: These should not be here I think. Ideally we should just have tests folder for dynamics modeling.
 
-TODO: Do we have the following?
-
-Ideally should be some command-line thing like `python3 train.py path/to/rosbags/directory path/to/params/file` where the params file contains things like learning rate, model architecture, the reader / filters to use, and so forth. Then it saves the model as something like `<directory_name>_<params_filename>.pt` (and saves the learning curves and qualitative results and such). Should probably also copy the params file into the model save directory as read-only, for future reference.
-
-Running a hyperparameter search would be a different script.
-
 ## Development
 From this point on-ward are instructions and other resources for the development.
 
