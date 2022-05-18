@@ -88,7 +88,7 @@ class AbstractSequenceReader(ABC):
             hf_meta = hf.create_group("meta")
 
             # First hash the abstract sequence reader itself.
-            hf_meta["sequence_reader_hash"] = hash_file(Path(__file__))
+            hf_meta["sequence_reader_hash"] = hash_file(Path(__file__)).encode("utf-8")
 
             # Then hash the filters and transf.
             for f_ in set(self.filters) | transforms:
@@ -106,8 +106,8 @@ class AbstractSequenceReader(ABC):
 
                 key_path = inspect.getsourcefile(f_.__class__)
                 file_path = os.path.relpath(key_path, Path(__file__).parent)  # type: ignore
-                hf_key["file_path"] = file_path
-                hf_key["file_hash"] = hash_file(Path(__file__).parent / file_path)
+                hf_key["file_path"] = str(file_path).encode("utf-8")
+                hf_key["file_hash"] = hash_file(Path(__file__).parent / file_path).encode("utf-8")
 
             # Then write the raw sequences.
             for sequence_idx, sequence in enumerate(self.cur_bag_raw_sequences):
@@ -163,10 +163,13 @@ class AbstractSequenceReader(ABC):
                 [f.__class__.__name__ for f in self.filters]
             ):
                 # For each feature key, check what is the hash of the file that generates it.
-                key_path = Path(__file__).parent / hf["meta"][key]["file_path"][
-                    ()
-                ]
+                relative_key_path = hf["meta"][key]["file_path"][()]
+                if isinstance(relative_key_path, bytes):
+                    relative_key_path = relative_key_path.decode("utf-8")
+                key_path = Path(__file__).parent / relative_key_path
                 key_hash = hf["meta"][key]["file_hash"][()]
+                if isinstance(key_hash, bytes):
+                    key_hash = key_hash.decode("utf-8")
 
                 # If the feature doesn't exist here than it's a new feature, or something else changed.
                 if not key_path.exists():
@@ -183,9 +186,10 @@ class AbstractSequenceReader(ABC):
                     )
 
             # Lastly check whether this file (the sequence reader) is newer than the cached version.
-            if hf["meta"]["sequence_reader_hash"][()] != hash_file(
-                Path(__file__)
-            ):
+            sequence_reader_hash = hf["meta"]["sequence_reader_hash"][()]
+            if isinstance(sequence_reader_hash, bytes):
+                sequence_reader_hash = sequence_reader_hash.decode("utf-8")
+            if sequence_reader_hash != hash_file(Path(__file__)):
                 return self.__cache_failure(
                     "Mismatched hashes for Abstract Sequence Reader"
                 )
@@ -249,7 +253,11 @@ class AbstractSequenceReader(ABC):
 
         # First check cache
         if use_cache:
-            cached_result = self.__read_raw_sequences_from_cache(bag_file_path)
+            try:
+                cached_result = self.__read_raw_sequences_from_cache(bag_file_path)
+            except Exception as e:
+                self.__cache_failure(f"Cache errored out with error: {e}")
+                cached_result = None
             if cached_result is not None:
                 print(f"Using cached result for bag: {bag_file_path}.")
                 self.cur_bag_raw_sequences = cached_result
