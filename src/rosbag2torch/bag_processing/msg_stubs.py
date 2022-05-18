@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from typing import Union
 
 import numpy as np
 
@@ -93,7 +94,7 @@ class PolarisControlMode(Enum):
 
 
 @dataclass
-class PIDInfo:
+class PIDInfoNew:
     vel_des: float
     vel: float
     error: float
@@ -104,7 +105,7 @@ class PIDInfo:
     brake_responding: bool
 
     def __eq__(self, __o: object) -> bool:
-        if not isinstance(__o, PIDInfo):
+        if not isinstance(__o, PIDInfoOld):
             return False
         fields = [
             "vel_des",
@@ -118,5 +119,36 @@ class PIDInfo:
         ]
         return all([getattr(self, x) == getattr(__o, x) for x in fields])
 
+
+@dataclass
+class PIDInfoOld:
+    vel_des: float
+    vel: float
+    error: float
+    integral_error: float
+    control: float
+    polaris_control_mode: np.int32
+    polaris_control_health: np.int32
+    brake_not_responding: bool
+    throttle_not_responding: bool
+
+    def __eq__(self, __o: object) -> bool:
+        if not isinstance(__o, PIDInfoOld):
+            return False
+        fields = [
+            "vel_des",
+            "vel",
+            "error",
+            "integral_error",
+            "control",
+            "polaris_control_mode",
+            "polaris_control_health",
+            "brake_not_responding",
+            "throttle_not_responding",
+        ]
+        return all([getattr(self, x) == getattr(__o, x) for x in fields])
+
+
+PIDInfo = Union[PIDInfoOld, PIDInfoNew]
 
 # end region: PIDInfo

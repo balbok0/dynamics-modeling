@@ -3,7 +3,7 @@ from typing import Dict, Optional, Tuple, Union, cast
 import numpy as np
 import rospy
 
-from ..msg_stubs import AutomaticGearDirectionDict, VehicleInput, VehicleState
+from ..msg_stubs import VehicleInput, VehicleState
 from .abstract_transform import AbstractTransform
 
 
