@@ -18,7 +18,9 @@ class SequenceLookaheadDataset(Dataset):
 
         # Sanitize features (i.e. make sure that minimum delay is 0)
         min_delay = min(delay for _, delay in features_with_delays)
-        features_with_delays = [(f, delay - min_delay) for f, delay in features_with_delays]
+        features_with_delays = [
+            (f, delay - min_delay) for f, delay in features_with_delays
+        ]
 
         # Set all of the variables
         self.__features = features_with_delays
@@ -42,11 +44,9 @@ class SequenceLookaheadDataset(Dataset):
         print(f"Constructed dataset of size {self.__total_len} ({seq_len_string})")
         if self.__total_len == 0:
             print("ERROR: empty dataset")
-            from IPython import embed; embed()
 
     def __len__(self) -> int:
-        """Number of rollouts/sequences in this dataset.
-        """
+        """Number of rollouts/sequences in this dataset."""
         return self.__total_len
 
     def __get_sequence_of_length(
@@ -60,19 +60,29 @@ class SequenceLookaheadDataset(Dataset):
 
         Returns:
             Tuple[torch.Tensor, ...]: Tuple of tensors with length twice the number of features passed to constructor.
+                Each element will have shape (S, *), where S is `sequence_length` and * is shape of each feature.
+                Since each even element is a timestamp these will have shape of exactly (S,).
                 For example if passed in features are "control", "state", it would return tuple of corresponding to:
-                    1. control features
-                    2. time offset of control features (with respect to smallest offset across features)
-                    3. state features
-                    4. time offset of state features (with respect to smallest offset across features)
+                    1. control features (S, 3)
+                    2. time offset of control features (with respect to smallest offset across features) (S,)
+                    3. state features (S, 2)
+                    4. time offset of state features (with respect to smallest offset across features) (S,)
         """
         sequence_idx = bisect_right(self.__sequence_start_idxs, index) - 1  # type: ignore
         rollout_idx = index - self.__sequence_start_idxs[sequence_idx]
 
         result: List[torch.Tensor] = []
         for f, delay in self.__features:
-            result.append(self.processed_sequences[sequence_idx][f"{f}_{delay}"][rollout_idx:rollout_idx+sequence_length])
-            result.append(self.processed_sequences[sequence_idx][f"time_{delay}"][rollout_idx:rollout_idx+sequence_length])
+            result.append(
+                self.processed_sequences[sequence_idx][f"{f}_{delay}"][
+                    rollout_idx : rollout_idx + sequence_length
+                ]
+            )
+            result.append(
+                self.processed_sequences[sequence_idx][f"time_{delay}"][
+                    rollout_idx : rollout_idx + sequence_length
+                ]
+            )
 
         return tuple(result)
 
@@ -154,10 +164,17 @@ class SequenceLookaheadDataset(Dataset):
             for f, delay in features:
                 if delay == max_delay:
                     cur_seq[f"{f}_{delay}"] = torch.from_numpy(seq[f][delay:])
-                    cur_seq[f"time_{delay}"] = torch.from_numpy(seq["time"][delay:] - seq["time"][:-delay])
+                    cur_seq[f"time_{delay}"] = torch.from_numpy(
+                        seq["time"][delay:] - seq["time"][:-delay]
+                    )
                 else:
-                    cur_seq[f"{f}_{delay}"] = torch.from_numpy(seq[f][delay:-(max_delay - delay)])
-                    cur_seq[f"time_{delay}"] = torch.from_numpy(seq["time"][delay:-(max_delay - delay)] - seq["time"][:-max_delay])
+                    cur_seq[f"{f}_{delay}"] = torch.from_numpy(
+                        seq[f][delay : -(max_delay - delay)]
+                    )
+                    cur_seq[f"time_{delay}"] = torch.from_numpy(
+                        seq["time"][delay : -(max_delay - delay)]
+                        - seq["time"][:-max_delay]
+                    )
 
             # Check key is used for checking length of this sequence etc.
             # It should not be assumed to be a specific feature
@@ -167,9 +184,7 @@ class SequenceLookaheadDataset(Dataset):
             # In each step we are taking delay_steps steps forward (to get next element of the rollout)
             # for sequence_length steps
             # One rollout will be sequence_length long
-            num_rollouts = (
-                len(cur_seq[check_key]) - sequence_length + 1
-            )
+            num_rollouts = len(cur_seq[check_key]) - sequence_length + 1
 
             # Sequence too short. No rollouts can be read
             if num_rollouts <= 0:

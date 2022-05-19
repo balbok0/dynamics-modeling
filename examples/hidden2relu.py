@@ -25,18 +25,23 @@ def train(
     for epoch in trange_epochs:
         running_loss = 0.0
         running_baseline_loss = 0.0
-        for x, y, dt in tqdm(train_loader, disable=not verbose, desc="Train", leave=False):
+        for control, _, state, state_dt, target, target_dt in tqdm(train_loader, disable=not verbose, desc="Train", leave=False):
+            control, state, state_dt, target, target_dt = control.float(), state.float(), state_dt.float(), target.float(), target_dt.float()
+            dt = target_dt - state_dt
+
+            x = torch.cat((control, state), dim=1)
+
             optimizer.zero_grad()
             # acceleration * dt + prev state
             # m / s^2 * s + m / s
-            y_pred = model(x) * dt
+            y_pred = model(x) * dt[:, None]
 
-            loss = criterion(y_pred, y - x[:, -2:])
+            loss = criterion(y_pred, target - x[:, -2:])
             loss.backward()
             optimizer.step()
 
             running_loss += loss.detach().cpu().item()
-            running_baseline_loss += criterion(y, x[:, -2:]).detach().cpu().item()
+            running_baseline_loss += criterion(target, x[:, -2:]).detach().cpu().item()
 
         train_loss = running_loss / len(train_loader)
         train_baseline_loss = running_baseline_loss / len(train_loader)
@@ -49,13 +54,18 @@ def train(
             with torch.no_grad():
                 val_running_loss = 0.0
                 val_running_baseline_loss = 0.0
-                for x, y, dt in tqdm(val_loader, disable=not verbose, desc="Validation", leave=False):
-                    y_pred = model(x) * dt
+                for control, _, state, state_dt, target, target_dt in tqdm(val_loader, disable=not verbose, desc="Validation", leave=False):
+                    control, state, state_dt, target, target_dt = control.float(), state.float(), state_dt.float(), target.float(), target_dt.float()
+                    dt = target_dt - state_dt
 
-                    loss = criterion(y_pred, y - x[:, -2:])
+                    x = torch.cat((control, state), dim=1)
+
+                    y_pred = model(x) * dt[:, None]
+
+                    loss = criterion(y_pred, target - x[:, -2:])
 
                     val_running_loss += loss.detach().cpu().item()
-                    val_running_baseline_loss += criterion(y, x[:, -2:]).detach().cpu().item()
+                    val_running_baseline_loss += criterion(target, x[:, -2:]).detach().cpu().item()
 
 
             val_loss = val_running_loss / len(val_loader)
@@ -71,7 +81,7 @@ def train(
 def main():
     DELAY_STEPS = 15
     EPOCHS = 50
-    TRAIN = False
+    TRAIN = True
     PLOT_VAL = True
     PLOT_LEN_ROLLOUT = 10  # seconds
 
@@ -112,9 +122,9 @@ def main():
         criterion = nn.MSELoss()
 
         train_sequences = load_bags("datasets/rzr_real", reader)
-        train_dataset = LookaheadDataset(train_sequences, ["control", "state"], ["target"], delay_steps=DELAY_STEPS)
+        train_dataset = LookaheadDataset(train_sequences, [("control", 0), ("state", 3), ("target", 4)])
 
-        val_dataset = LookaheadDataset(val_sequences, ["control", "state"], ["target"], delay_steps=DELAY_STEPS)
+        val_dataset = LookaheadDataset(val_sequences, [("control", 0), ("state", 3), ("target", 4)])
 
         train(
             model,
@@ -144,7 +154,13 @@ def main():
             pred_acc_all = []
 
 
-            for x, y, dt in tqdm(DataLoader(LookaheadDataset([longest_val_sequence], ["control", "state"], ["target"], delay_steps=DELAY_STEPS), batch_size=1, shuffle=False), desc="Final Validation"):
+            for control, _, state, state_dt, target, target_dt in tqdm(DataLoader(LookaheadDataset([longest_val_sequence], [("control", 0), ("state", 3), ("target", 4)]), batch_size=1, shuffle=False), desc="Final Validation"):
+                control, state, state_dt, target, target_dt = control.float(), state.float(), state_dt.float(), target.float(), target_dt.float()
+                dt = (target_dt - state_dt)[:, None]
+
+                x = torch.cat((control, state), dim=1)
+                y = target
+
                 pred_acc = model(x)
                 y_pred = pred_acc * dt + x[:, -2:]
                 y_zero_all.extend(x[:, -2:].detach().cpu().numpy())
@@ -192,18 +208,6 @@ def main():
             y_true_all = y_true_all[::DELAY_STEPS]
             y_zero_all = y_zero_all[::DELAY_STEPS]
             y_pred_all = y_pred_all[::DELAY_STEPS]
-
-            # FIXME: Commented out code below is incorrect, since it doesn't unroll the acceleration
-            # # Plot the dx, dtheta for each configuration
-            # fig, axs = plt.subplots(3, 2, figsize=(10, 10))
-            # for row_idx, (y, type_y) in enumerate(zip([y_true_all, y_zero_all, y_pred_all], ["True", "Zero", "Pred"])):
-            #     # for col_idx, col_name in enumerate(["dx", "dtheta"]):
-            #     #     axs[row_idx, col_idx].plot(np.cumsum(dts_all), y[:, col_idx])
-            #     #     axs[row_idx, col_idx].set_title(f"{type_y} - {col_name}")
-            #     for col_idx, (y_idx, col_name) in enumerate(zip([0, 2], ["dx", "dtheta"])):
-            #         axs[row_idx, col_idx].plot(np.cumsum(dts_all), y[:, y_idx])
-            #         axs[row_idx, col_idx].set_title(f"{type_y} - {col_name}")
-            # plt.show()
 
             # For Zero and Predicted plot rollouts only for PLOT_LEN_ROLLOUT seconds
             idx = 0

@@ -1,6 +1,8 @@
+from typing import cast
+
 from rospy import Time
 
-from ..msg_stubs import PIDInfo, PolarisControlMode
+from ..msg_stubs import PIDInfo, PIDInfoNew, PIDInfoOld, PolarisControlMode
 from .abstract_filter import AbstractFilter
 
 
@@ -21,6 +23,7 @@ class PIDInfoFilter(AbstractFilter):
 
         # There are two versions of PIDInfo msg.
         if hasattr(msg, "brake_responding"):
+            msg = cast(PIDInfoNew, msg)
             self.cur_state = (
                 msg.polaris_control_mode == PolarisControlMode.AUTONOMOUS.value
                 and msg.polaris_control_health == 2
@@ -28,6 +31,7 @@ class PIDInfoFilter(AbstractFilter):
                 and msg.brake_responding
             )
         else:
+            msg = cast(PIDInfoOld, msg)
             self.cur_state = (
                 msg.polaris_control_mode == PolarisControlMode.AUTONOMOUS.value
                 and msg.polaris_control_health == 2
